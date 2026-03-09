@@ -1,0 +1,69 @@
+# 单说话人 / 小数据 / Windows + CUDA 环境下的 LoRA 默认配置模板
+
+experiment_name: qwen3_tts_12hz_lora_single_speaker
+
+model:
+  base_model: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+  tokenizer_model: Qwen/Qwen3-TTS-Tokenizer-12Hz
+  device: cuda:0
+  dtype: bfloat16
+  attn_implementation: sdpa
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  phase2_optional_modules:
+    - linear_fc1
+    - linear_fc2
+
+training:
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-4
+  weight_decay: 0.0
+  num_epochs: 5
+  warmup_ratio: 0.05
+  max_grad_norm: 1.0
+  logging_steps: 10
+  save_strategy: epoch
+  mixed_precision: bf16
+
+data:
+  raw_jsonl: train_raw.jsonl
+  train_jsonl: train_with_codes.jsonl
+  input_sample_rate: 24000
+  ref_audio_strategy: shared_reference
+  language_default: Auto
+  speaker_name: speaker_test
+
+runtime:
+  freeze_speaker_encoder: true
+  freeze_embeddings: true
+  freeze_output_heads: true
+  save_adapter_only: true
+  save_speaker_embedding_patch: true
+  save_config_patch: true
+
+artifacts:
+  output_root: outputs/lora_single_speaker
+  adapter_dir: outputs/lora_single_speaker/adapter
+  speaker_embedding_file: outputs/lora_single_speaker/speaker_embedding.safetensors
+  config_patch_file: outputs/lora_single_speaker/config_patch.json
+  train_args_file: outputs/lora_single_speaker/train_args.json
+  metrics_file: outputs/lora_single_speaker/metrics.json
+
+notes:
+  - 先跑 0.6B 版本验证数据是否有效，再考虑 1.7B。
+  - 如果 loss 下降明显但音色迁移不够，再考虑把 text_projection 纳入第二阶段。
+  - 当前 Windows 环境不依赖 flash-attn，优先使用 sdpa。 

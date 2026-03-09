@@ -22,3 +22,6 @@ wheels/
 .vscode/
 venv/
 env/
+/resources/*
+/models/*
+/outputs/*
