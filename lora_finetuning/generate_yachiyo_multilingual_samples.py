@@ -26,6 +26,12 @@ LANGUAGE_TAGS = {
 }
 
 
+def chunked(items: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be > 0, got {batch_size}")
+    return [items[index:index + batch_size] for index in range(0, len(items), batch_size)]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate multilingual Yachiyo preset samples with a LoRA bundle")
     parser.add_argument("--bundle_dir", required=True, help="Bundle dir created by export_custom_voice.py")
@@ -44,6 +50,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device_map", default="cuda:0")
     parser.add_argument("--torch_dtype", default="bfloat16")
     parser.add_argument("--attn_implementation", default="sdpa")
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=3,
+        help="Number of samples to generate per model call; on a single GPU this is usually faster than naive parallelism.",
+    )
     parser.add_argument("--local_files_only", action="store_true")
     return parser.parse_args()
 
@@ -119,6 +131,47 @@ def build_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def build_generation_jobs(
+    presets: list[dict[str, Any]],
+    output_dir: Path,
+    speaker_name: str,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    jobs: list[dict[str, Any]] = []
+    preset_reports: dict[str, dict[str, Any]] = {}
+
+    for preset in presets:
+        preset_id = preset["speaker_id"]
+        preset_output_dir = ensure_dir(output_dir / preset_id)
+        prompt_texts = preset.get("prompt_texts") or {"Japanese": preset.get("prompt_text", "")}
+        style_instruct = preset.get("style_instruct") or preset.get("description") or ""
+
+        preset_reports[preset_id] = {
+            "speaker_id": preset_id,
+            "style": preset.get("style", preset_id),
+            "description": preset.get("description", ""),
+            "style_instruct": style_instruct,
+            "samples": [],
+        }
+
+        for language, text in prompt_texts.items():
+            if not text:
+                continue
+            language_tag = LANGUAGE_TAGS.get(language, language.lower())
+            jobs.append(
+                {
+                    "preset_id": preset_id,
+                    "speaker_name": speaker_name,
+                    "language": language,
+                    "language_tag": language_tag,
+                    "text": text,
+                    "instruct": style_instruct or None,
+                    "output_path": preset_output_dir / f"{language_tag}.wav",
+                }
+            )
+
+    return jobs, preset_reports
+
+
 def main() -> None:
     args = parse_args()
     bundle_dir = Path(args.bundle_dir)
@@ -151,59 +204,46 @@ def main() -> None:
         "base_model": base_model,
         "speaker_name": speaker_name,
         "preset_file": str(preset_file),
+        "batch_size": args.batch_size,
         "total_samples": 0,
         "presets": [],
     }
 
-    for preset in presets:
-        preset_id = preset["speaker_id"]
-        preset_output_dir = ensure_dir(output_dir / preset_id)
-        prompt_texts = preset.get("prompt_texts") or {"Japanese": preset.get("prompt_text", "")}
-        style_instruct = preset.get("style_instruct") or preset.get("description") or ""
+    jobs, preset_reports = build_generation_jobs(presets, output_dir, speaker_name)
 
-        preset_report: dict[str, Any] = {
-            "speaker_id": preset_id,
-            "style": preset.get("style", preset_id),
-            "description": preset.get("description", ""),
-            "style_instruct": style_instruct,
-            "samples": [],
-        }
+    for batch_jobs in chunked(jobs, args.batch_size):
+        wavs, sample_rate = qwen3tts.generate_custom_voice(
+            text=[job["text"] for job in batch_jobs],
+            language=[job["language"] for job in batch_jobs],
+            speaker=[job["speaker_name"] for job in batch_jobs],
+            instruct=[job["instruct"] for job in batch_jobs],
+        )
 
-        for language, text in prompt_texts.items():
-            if not text:
-                continue
-            language_tag = LANGUAGE_TAGS.get(language, language.lower())
-            output_path = preset_output_dir / f"{language_tag}.wav"
+        for job, wav in zip(batch_jobs, wavs):
+            output_path = job["output_path"]
+            sf.write(str(output_path), wav, sample_rate)
 
-            wavs, sample_rate = qwen3tts.generate_custom_voice(
-                text=text,
-                language=language,
-                speaker=speaker_name,
-                instruct=style_instruct or None,
-            )
-            sf.write(str(output_path), wavs[0], sample_rate)
-
-            duration_seconds = float(len(wavs[0]) / sample_rate)
+            duration_seconds = float(len(wav) / sample_rate)
             sample_info = {
-                "language": language,
-                "language_tag": language_tag,
-                "text": text,
+                "language": job["language"],
+                "language_tag": job["language_tag"],
+                "text": job["text"],
                 "output_wav": str(output_path),
                 "sample_rate": sample_rate,
                 "duration_seconds": duration_seconds,
             }
-            preset_report["samples"].append(sample_info)
+            preset_reports[job["preset_id"]]["samples"].append(sample_info)
             report["total_samples"] += 1
 
             print(
-                f"Generated {preset_id} [{language}] -> {output_path} "
+                f"Generated {job['preset_id']} [{job['language']}] -> {output_path} "
                 f"({duration_seconds:.2f}s, sr={sample_rate})"
             )
 
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        report["presets"].append(preset_report)
+    report["presets"] = [preset_reports[preset["speaker_id"]] for preset in presets]
 
     save_json(report, output_dir / "report.json")
     (output_dir / "report.md").write_text(build_markdown(report), encoding="utf-8")

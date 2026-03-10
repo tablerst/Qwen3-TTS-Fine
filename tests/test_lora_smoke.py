@@ -13,7 +13,9 @@ import numpy as np
 import torch
 from torch import nn
 
-from lora_finetuning import common, export_custom_voice, inference_with_lora, sft_12hz_lora
+from lora_finetuning import (common, export_custom_voice,
+                             generate_yachiyo_multilingual_samples,
+                             inference_with_lora, sft_12hz_lora)
 
 
 class DummyLoRAModule(nn.Module):
@@ -191,6 +193,52 @@ artifacts:
             [record["id"] for record in validation_records],
             [record["id"] for record in validation_records_2],
         )
+
+    def test_chunked_batches_jobs_for_generation(self) -> None:
+        items = [{"id": idx} for idx in range(7)]
+
+        batches = generate_yachiyo_multilingual_samples.chunked(items, batch_size=3)
+
+        self.assertEqual([len(batch) for batch in batches], [3, 3, 1])
+        self.assertEqual(batches[0][0]["id"], 0)
+        self.assertEqual(batches[-1][0]["id"], 6)
+
+    def test_build_generation_jobs_preserves_preset_order(self) -> None:
+        output_dir = self.make_temp_dir() / "samples"
+        presets = [
+            {
+                "speaker_id": "preset_a",
+                "style": "A",
+                "description": "desc a",
+                "style_instruct": "ins a",
+                "prompt_texts": {
+                    "Japanese": "こんにちは",
+                    "English": "hello",
+                },
+            },
+            {
+                "speaker_id": "preset_b",
+                "style": "B",
+                "description": "desc b",
+                "style_instruct": "ins b",
+                "prompt_texts": {
+                    "Chinese": "你好",
+                },
+            },
+        ]
+
+        jobs, preset_reports = generate_yachiyo_multilingual_samples.build_generation_jobs(
+            presets=presets,
+            output_dir=output_dir,
+            speaker_name="yachiyo_formal",
+        )
+
+        self.assertEqual(len(jobs), 3)
+        self.assertEqual([job["preset_id"] for job in jobs], ["preset_a", "preset_a", "preset_b"])
+        self.assertEqual(jobs[0]["speaker_name"], "yachiyo_formal")
+        self.assertTrue(str(jobs[0]["output_path"]).endswith("preset_a\\ja.wav") or str(jobs[0]["output_path"]).endswith("preset_a/ja.wav"))
+        self.assertEqual(list(preset_reports.keys()), ["preset_a", "preset_b"])
+        self.assertEqual(preset_reports["preset_a"]["style_instruct"], "ins a")
 
     def test_save_artifacts_writes_expected_training_outputs(self) -> None:
         output_dir = self.make_temp_dir() / "artifacts"
