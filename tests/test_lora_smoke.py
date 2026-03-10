@@ -92,20 +92,23 @@ class LoRASmokeTests(unittest.TestCase):
         work_dir = self.make_temp_dir()
         config_path = work_dir / "smoke_config.yaml"
         config_path.write_text(
-            """
-model:
-  base_model: models/from-yaml
-training:
-  batch_size: 2
-lora:
-  target_modules:
-    - q_proj
-    - o_proj
-data:
-  speaker_name: yaml_speaker
-artifacts:
-  output_root: outputs/from-yaml
-            """.strip(),
+                        "\n".join(
+                                [
+                                        "model:",
+                                        "  base_model: models/from-yaml",
+                                        "training:",
+                                        "  batch_size: 2",
+                                        "lora:",
+                                        "  target_modules:",
+                                        "    - q_proj",
+                                        "    - o_proj",
+                                        "data:",
+                                        "  speaker_name: yaml_speaker",
+                                        "artifacts:",
+                                        "  output_root: outputs/from-yaml",
+                                        "  init_adapter_dir: outputs/init-adapter",
+                                ]
+                        ),
             encoding="utf-8",
         )
 
@@ -114,6 +117,7 @@ artifacts:
             base_model=None,
             train_jsonl=None,
             output_root=None,
+            init_adapter_dir=None,
             speaker_name="cli_speaker",
             speaker_id=3001,
             torch_dtype="fp16",
@@ -157,7 +161,61 @@ artifacts:
         self.assertEqual(resolved.target_scope, common.DEFAULT_TARGET_SCOPE)
         self.assertRegex(resolved.target_module_pattern, r"talker\\.model\\.layers")
         self.assertEqual(resolved.extra_trainable_modules, ["linear_fc1"])
+        self.assertEqual(resolved.init_adapter_dir, "outputs/init-adapter")
         self.assertTrue(resolved.local_files_only)
+
+    def test_resolve_config_prefers_cli_init_adapter_dir_over_yaml(self) -> None:
+        work_dir = self.make_temp_dir()
+        config_path = work_dir / "warm_start_config.yaml"
+        config_path.write_text(
+            """
+artifacts:
+  init_adapter_dir: outputs/from-yaml
+            """.strip(),
+            encoding="utf-8",
+        )
+
+        args = Namespace(
+            config=str(config_path),
+            base_model=None,
+            train_jsonl=None,
+            output_root=None,
+            init_adapter_dir="outputs/from-cli",
+            speaker_name=None,
+            speaker_id=None,
+            torch_dtype=None,
+            attn_implementation=None,
+            local_files_only=False,
+            batch_size=None,
+            gradient_accumulation_steps=None,
+            learning_rate=None,
+            weight_decay=None,
+            num_epochs=None,
+            warmup_ratio=None,
+            lr_scheduler_type=None,
+            max_grad_norm=None,
+            mixed_precision=None,
+            logging_steps=None,
+            sub_talker_loss_weight=None,
+            validation_jsonl=None,
+            validation_split_ratio=None,
+            validation_max_samples=None,
+            validation_seed=None,
+            early_stopping_patience=None,
+            early_stopping_min_delta=None,
+            lora_r=None,
+            lora_alpha=None,
+            lora_dropout=None,
+            lora_bias=None,
+            target_scope=None,
+            target_module_regex=None,
+            target_modules=None,
+            extra_trainable_modules=None,
+        )
+
+        resolved = sft_12hz_lora.resolve_config(args)
+
+        self.assertEqual(resolved.init_adapter_dir, "outputs/from-cli")
 
     def test_build_target_module_regex_defaults_to_talker_only(self) -> None:
         pattern = common.build_target_module_regex(["q_proj", "o_proj"], target_scope="talker_only")
@@ -312,6 +370,39 @@ artifacts:
         self.assertEqual(manifest["speaker_name"], "bundle_speaker")
         self.assertEqual(manifest["speaker_id"], 3002)
         self.assertEqual(manifest["adapter_dir"], "adapter")
+
+    def test_warm_start_adapter_weights_can_be_loaded_after_inject(self) -> None:
+        source_dir = self.make_temp_dir() / "source_adapter"
+        source_model, lora_config = self.build_dummy_lora_model()
+        source_param_name, source_param = next(
+            (name, param) for name, param in source_model.named_parameters() if "lora_A" in name
+        )
+        with torch.no_grad():
+            source_param.copy_(torch.full_like(source_param, 0.25))
+        common.save_lora_adapter(source_model, source_dir, lora_config)
+
+        target_model = DummyLoRAModule()
+        common.inject_lora(target_model, lora_config)
+        sft_12hz_lora.validate_warm_start_adapter_config(source_dir, lora_config)
+        common.load_lora_adapter_weights(target_model, source_dir)
+
+        target_param = dict(target_model.named_parameters())[source_param_name]
+        self.assertTrue(torch.allclose(target_param.detach(), source_param.detach()))
+
+    def test_warm_start_config_mismatch_is_rejected(self) -> None:
+        source_dir = self.make_temp_dir() / "source_adapter"
+        source_model, lora_config = self.build_dummy_lora_model()
+        common.save_lora_adapter(source_model, source_dir, lora_config)
+
+        mismatched_lora_config = common.build_lora_config(
+            r=8,
+            alpha=8,
+            dropout=0.0,
+            target_modules=common.DEFAULT_TARGET_MODULES,
+        )
+
+        with self.assertRaisesRegex(ValueError, "Warm-start adapter is incompatible"):
+            sft_12hz_lora.validate_warm_start_adapter_config(source_dir, mismatched_lora_config)
 
     def test_inference_main_loads_bundle_and_writes_output(self) -> None:
         bundle_dir = self.make_temp_dir() / "bundle"

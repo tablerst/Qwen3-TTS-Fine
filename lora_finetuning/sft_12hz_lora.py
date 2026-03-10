@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 import torch
 from accelerate import Accelerator
+from peft import LoraConfig
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import AutoConfig, get_scheduler
@@ -29,6 +30,7 @@ from lora_finetuning.common import (DEFAULT_TARGET_MODULES,
                                     ensure_dir,
                                     extract_target_speaker_embedding,
                                     inject_lora, load_yaml_config,
+                                    load_lora_adapter_weights,
                                     make_config_patch,
                                     normalize_string_list,
                                     parse_torch_dtype, resolve_setting,
@@ -44,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base_model", type=str, default=None)
     parser.add_argument("--train_jsonl", type=str, default=None)
     parser.add_argument("--output_root", type=str, default=None)
+    parser.add_argument("--init_adapter_dir", type=str, default=None)
     parser.add_argument("--speaker_name", type=str, default=None)
     parser.add_argument("--speaker_id", type=int, default=None)
 
@@ -92,6 +95,7 @@ def resolve_config(args: argparse.Namespace) -> ResolvedConfig:
     base_model = resolve_setting(args.base_model, cfg, "model", "base_model", "Qwen/Qwen3-TTS-12Hz-0.6B-Base")
     train_jsonl = resolve_setting(args.train_jsonl, cfg, "data", "train_jsonl", "train_with_codes.jsonl")
     output_root = resolve_setting(args.output_root, cfg, "artifacts", "output_root", "outputs/lora_single_speaker")
+    init_adapter_dir = resolve_setting(args.init_adapter_dir, cfg, "artifacts", "init_adapter_dir", None)
     speaker_name = resolve_setting(args.speaker_name, cfg, "data", "speaker_name", "speaker_test")
     speaker_id = resolve_setting(args.speaker_id, cfg, None, "speaker_id", 3000)
 
@@ -117,6 +121,7 @@ def resolve_config(args: argparse.Namespace) -> ResolvedConfig:
         train_jsonl=train_jsonl,
         validation_jsonl=resolve_setting(args.validation_jsonl, cfg, "data", "validation_jsonl", None),
         output_root=output_root,
+        init_adapter_dir=init_adapter_dir,
         speaker_name=speaker_name,
         speaker_id=int(speaker_id),
         torch_dtype=resolve_setting(args.torch_dtype, cfg, "model", "dtype", "bfloat16"),
@@ -150,6 +155,43 @@ def resolve_config(args: argparse.Namespace) -> ResolvedConfig:
         config_path=args.config,
     )
     return resolved
+
+
+def _normalize_target_modules_for_compare(target_modules: Sequence[str] | str | None) -> str | tuple[str, ...]:
+    if isinstance(target_modules, str):
+        return target_modules
+    return tuple(normalize_string_list(target_modules, []))
+
+
+def validate_warm_start_adapter_config(init_adapter_dir: str | Path, expected_lora_config: LoraConfig) -> None:
+    adapter_dir = Path(init_adapter_dir)
+    stored_lora_config = cast(LoraConfig, LoraConfig.from_pretrained(str(adapter_dir)))
+
+    mismatches: list[str] = []
+    if int(stored_lora_config.r) != int(expected_lora_config.r):
+        mismatches.append(f"r: expected {expected_lora_config.r}, got {stored_lora_config.r}")
+    if int(stored_lora_config.lora_alpha) != int(expected_lora_config.lora_alpha):
+        mismatches.append(
+            f"lora_alpha: expected {expected_lora_config.lora_alpha}, got {stored_lora_config.lora_alpha}"
+        )
+    if float(stored_lora_config.lora_dropout) != float(expected_lora_config.lora_dropout):
+        mismatches.append(
+            f"lora_dropout: expected {expected_lora_config.lora_dropout}, got {stored_lora_config.lora_dropout}"
+        )
+    if str(stored_lora_config.bias) != str(expected_lora_config.bias):
+        mismatches.append(f"bias: expected {expected_lora_config.bias}, got {stored_lora_config.bias}")
+    if _normalize_target_modules_for_compare(stored_lora_config.target_modules) != _normalize_target_modules_for_compare(expected_lora_config.target_modules):
+        mismatches.append(
+            "target_modules: expected "
+            f"{expected_lora_config.target_modules}, got {stored_lora_config.target_modules}"
+        )
+
+    if mismatches:
+        raise ValueError(
+            "Warm-start adapter is incompatible with the requested LoRA configuration. "
+            "Please reuse the same LoRA topology when continuing training. "
+            f"Details: {'; '.join(mismatches)}"
+        )
 
 
 def load_train_data(train_jsonl: str | Path) -> list[dict[str, Any]]:
@@ -366,6 +408,9 @@ def main() -> None:
         lora_config,
         extra_trainable_modules=resolved.extra_trainable_modules,
     )
+    if resolved.init_adapter_dir:
+        validate_warm_start_adapter_config(resolved.init_adapter_dir, lora_config)
+        load_lora_adapter_weights(qwen3tts.model, resolved.init_adapter_dir)
     if trainable_params == 0:
         raise RuntimeError(
             "No trainable parameters were enabled. Please check target_modules / extra_trainable_modules."
@@ -426,6 +471,7 @@ def main() -> None:
         "target_module_pattern": resolved.target_module_pattern,
         "target_modules": resolved.target_modules,
         "extra_trainable_modules": enabled_extra,
+        "init_adapter_dir": resolved.init_adapter_dir,
         "lr_scheduler_type": resolved.lr_scheduler_type,
         "warmup_ratio": resolved.warmup_ratio,
         "num_training_steps": num_training_steps,
@@ -450,6 +496,8 @@ def main() -> None:
     accelerator.print(f"Target modules: {resolved.target_modules}")
     accelerator.print(f"Target scope: {resolved.target_scope}")
     accelerator.print(f"Target module pattern: {resolved.target_module_pattern}")
+    if resolved.init_adapter_dir:
+        accelerator.print(f"Warm-start adapter: {resolved.init_adapter_dir}")
     accelerator.print(
         f"LR scheduler: {resolved.lr_scheduler_type} | warmup_ratio={resolved.warmup_ratio:.4f} "
         f"| warmup_steps={num_warmup_steps} | total_steps={num_training_steps}"

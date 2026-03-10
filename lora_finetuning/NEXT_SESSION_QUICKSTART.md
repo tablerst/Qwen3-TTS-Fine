@@ -4,6 +4,22 @@
 
 ---
 
+## 当前实验结论快照
+
+- 当前**单语最像**候选：
+	- `outputs/lora_formal_single_speaker_1p7b_timbre_transfer_20260310_bundle_best_refcand8`
+- 当前**多语主线最佳**候选：
+	- `outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best`
+- `v3` 已实际执行：
+	- 训练输出：`outputs/lora_candidate8_multilingual_warmstart_1p7b_20260311_v3`
+	- bundleTest：`outputs/lora_candidate8_multilingual_warmstart_1p7b_20260311_v3_bundleTest`
+- `v3` 的重要结论：
+	- ZH 从 `3` 条增到 `5` 条后，`validation loss` 继续下降
+	- 但**主观听感不如 `v2`**
+	- 因此当前不要把 `v3` 当成默认最佳版本
+
+---
+
 ## 当前已完成状态
 
 ### 环境
@@ -48,15 +64,16 @@
 
 优先顺序建议如下：
 
-1. 检查 `train_with_codes_qwen3tts.jsonl` 的数据质量
-2. 给 `sft_12hz_lora.py` 确定一版首跑参数
-3. 启动一次最小 LoRA 训练
-4. 如果训练正常，再补导出与推理验证
+1. 先对比 `v2` 与 `v3` 的 JA / ZH / EN 试听，确认主观差异点
+2. 如果继续做多语增强，请从 `v2` 而不是 `v3` 重新设计下一轮
+3. 每新增一轮实验后，立即更新 `EXPERIMENT_CATALOG.md`
+4. 如果要继续做中文增强，优先减少变量，不要同时大改数据配比和训练策略
 
 ---
 
 ## 新会话推荐先读的文件
 
+- `lora_finetuning/EXPERIMENT_CATALOG.md`
 - `lora_finetuning/README.md`
 - `lora_finetuning/IMPLEMENTATION_PLAN.md`
 - `lora_finetuning/configs/single_speaker_small_data.yaml`
@@ -67,8 +84,8 @@
 
 最适合的开场请求通常是：
 
-- “帮我给这 89 条数据定一版 LoRA 首跑参数”
-- “帮我直接启动第一次 LoRA 训练”
-- “帮我先做训练/验证切分，再开训”
+- “帮我基于 `v2` 和 `v3` 的试听结论设计一个更稳的 `v4`”
+- “帮我把最新实验结果补登记到 `EXPERIMENT_CATALOG.md`”
+- “帮我从 `v2/best-checkpoint` 再做一轮更保守的中文增强实验”
 
 这样新会话可以最少重复上下文，直接进入执行阶段。

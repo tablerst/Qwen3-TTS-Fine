@@ -325,15 +325,22 @@ def save_lora_adapter(model: torch.nn.Module, adapter_dir: str | Path, lora_conf
     return adapter_dir
 
 
-def load_lora_adapter(model: torch.nn.Module, adapter_dir: str | Path) -> LoraConfig:
+def load_lora_adapter_weights(model: torch.nn.Module, adapter_dir: str | Path) -> LoraConfig:
     adapter_dir = Path(adapter_dir)
     lora_config = cast(LoraConfig, LoraConfig.from_pretrained(str(adapter_dir)))
-    inject_adapter_in_model(lora_config, model)
     adapter_state = load_file(str(adapter_dir / "adapter_model.safetensors"))
     outcome = set_peft_model_state_dict(model, adapter_state)
     unexpected_keys = getattr(outcome, "unexpected_keys", None) if outcome is not None else None
     if unexpected_keys:
         raise ValueError(f"Unexpected adapter keys: {unexpected_keys}")
+    return lora_config
+
+
+def load_lora_adapter(model: torch.nn.Module, adapter_dir: str | Path) -> LoraConfig:
+    adapter_dir = Path(adapter_dir)
+    lora_config = cast(LoraConfig, LoraConfig.from_pretrained(str(adapter_dir)))
+    inject_adapter_in_model(lora_config, model)
+    load_lora_adapter_weights(model, adapter_dir)
     return lora_config
 
 

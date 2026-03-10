@@ -1,0 +1,47 @@
+experiment_name: qwen3_tts_12hz_lora_formal_single_speaker_timbre_transfer_1p7b_20260310
+
+model:
+  base_model: E:/JetBrains/Pycharm/Qwen3-TTS-Fine/models/Qwen3-TTS-12Hz-1.7B-Base
+  dtype: bfloat16
+  attn_implementation: sdpa
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  target_scope: talker_only
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 3.0e-5
+  weight_decay: 0.0
+  num_epochs: 2
+  warmup_ratio: 0.05
+  lr_scheduler_type: linear
+  max_grad_norm: 1.0
+  logging_steps: 5
+  mixed_precision: bf16
+  validation_split_ratio: 0.1
+  validation_max_samples: 12
+  validation_seed: 42
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
+
+sub_talker_loss_weight: 0.2
+
+data:
+  train_jsonl: E:/JetBrains/Pycharm/Qwen3-TTS-Fine/resources/segments/train_with_codes_qwen3tts.jsonl
+  speaker_name: yachiyo_formal
+
+artifacts:
+  output_root: E:/JetBrains/Pycharm/Qwen3-TTS-Fine/outputs/lora_formal_single_speaker_1p7b_timbre_transfer_20260310
