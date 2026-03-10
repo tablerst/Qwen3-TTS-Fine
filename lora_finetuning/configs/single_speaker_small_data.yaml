@@ -15,14 +15,11 @@ lora:
   dropout: 0.05
   bias: none
   task_type: CAUSAL_LM
+  target_scope: talker_only
   target_modules:
     - q_proj
-    - k_proj
     - v_proj
     - o_proj
-    - gate_proj
-    - up_proj
-    - down_proj
   phase2_optional_modules:
     - linear_fc1
     - linear_fc2
@@ -34,10 +31,16 @@ training:
   weight_decay: 0.0
   num_epochs: 5
   warmup_ratio: 0.05
+  lr_scheduler_type: linear
   max_grad_norm: 1.0
   logging_steps: 10
   save_strategy: epoch
   mixed_precision: bf16
+  validation_split_ratio: 0.1
+  validation_max_samples: 12
+  validation_seed: 42
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
 
 data:
   raw_jsonl: train_raw.jsonl

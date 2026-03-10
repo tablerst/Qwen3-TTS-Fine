@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Literal, Sequence, cast
 
 import librosa
 import torch
@@ -16,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-DEFAULT_TARGET_MODULES = [
+ALL_LAYER_TARGET_MODULES = [
     "q_proj",
     "k_proj",
     "v_proj",
@@ -26,10 +27,87 @@ DEFAULT_TARGET_MODULES = [
     "down_proj",
 ]
 
+DEFAULT_TARGET_MODULES = [
+    "q_proj",
+    "v_proj",
+    "o_proj",
+]
+
+DEFAULT_TARGET_SCOPE = "talker_only"
+SUPPORTED_TARGET_SCOPES = [
+    "talker_only",
+    "talker_and_code_predictor",
+]
+
 PHASE2_OPTIONAL_MODULES = [
     "linear_fc1",
     "linear_fc2",
 ]
+
+
+_TARGET_PATH_PATTERNS = {
+    "q_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.self_attn\.q_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.self_attn\.q_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.self_attn\.q_proj",
+        ],
+    },
+    "k_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.self_attn\.k_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.self_attn\.k_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.self_attn\.k_proj",
+        ],
+    },
+    "v_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.self_attn\.v_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.self_attn\.v_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.self_attn\.v_proj",
+        ],
+    },
+    "o_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.self_attn\.o_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.self_attn\.o_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.self_attn\.o_proj",
+        ],
+    },
+    "gate_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.mlp\.gate_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.mlp\.gate_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.mlp\.gate_proj",
+        ],
+    },
+    "up_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.mlp\.up_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.mlp\.up_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.mlp\.up_proj",
+        ],
+    },
+    "down_proj": {
+        "talker_only": [r"talker\.model\.layers\.\d+\.mlp\.down_proj"],
+        "talker_and_code_predictor": [
+            r"talker\.model\.layers\.\d+\.mlp\.down_proj",
+            r"talker\.code_predictor\.model\.layers\.\d+\.mlp\.down_proj",
+        ],
+    },
+    "linear_fc1": {
+        "talker_only": [r"talker\.text_projection\.linear_fc1"],
+        "talker_and_code_predictor": [r"talker\.text_projection\.linear_fc1"],
+    },
+    "linear_fc2": {
+        "talker_only": [r"talker\.text_projection\.linear_fc2"],
+        "talker_and_code_predictor": [r"talker\.text_projection\.linear_fc2"],
+    },
+    "small_to_mtp_projection": {
+        "talker_only": [r"talker\.code_predictor\.small_to_mtp_projection"],
+        "talker_and_code_predictor": [r"talker\.code_predictor\.small_to_mtp_projection"],
+    },
+}
 
 
 def ensure_dir(path: str | Path) -> Path:
@@ -86,6 +164,43 @@ def normalize_string_list(value: Any, default: Sequence[str] | None = None) -> l
     raise TypeError(f"Expected string or sequence for module list, got {type(value)!r}")
 
 
+def build_target_module_regex(
+    target_modules: Sequence[str] | str | None,
+    target_scope: str = DEFAULT_TARGET_SCOPE,
+    target_module_regex: str | None = None,
+) -> str:
+    if target_module_regex:
+        return str(target_module_regex).strip()
+
+    if target_scope not in SUPPORTED_TARGET_SCOPES:
+        raise ValueError(
+            f"Unsupported target_scope: {target_scope}. Expected one of {SUPPORTED_TARGET_SCOPES}."
+        )
+
+    normalized_modules = normalize_string_list(target_modules, DEFAULT_TARGET_MODULES)
+    if not normalized_modules:
+        raise ValueError("At least one target module must be provided for LoRA injection.")
+
+    patterns: list[str] = []
+    seen_patterns: set[str] = set()
+
+    for module_name in normalized_modules:
+        scoped_patterns = _TARGET_PATH_PATTERNS.get(module_name, {}).get(target_scope)
+        if scoped_patterns:
+            for pattern in scoped_patterns:
+                if pattern not in seen_patterns:
+                    patterns.append(pattern)
+                    seen_patterns.add(pattern)
+            continue
+
+        fallback_pattern = rf".*\.{re.escape(module_name)}"
+        if fallback_pattern not in seen_patterns:
+            patterns.append(fallback_pattern)
+            seen_patterns.add(fallback_pattern)
+
+    return rf"^(?:{'|'.join(patterns)})$"
+
+
 def parse_torch_dtype(dtype_name: str | None) -> torch.dtype:
     normalized = (dtype_name or "bfloat16").lower()
     mapping = {
@@ -129,15 +244,16 @@ def build_lora_config(
     r: int,
     alpha: int,
     dropout: float,
-    target_modules: Sequence[str],
+    target_modules: Sequence[str] | str,
     bias: str = "none",
 ) -> LoraConfig:
+    bias_value = cast(Literal["none", "all", "lora_only"], bias)
     return LoraConfig(
         r=r,
         lora_alpha=alpha,
         lora_dropout=dropout,
-        bias=bias,
-        target_modules=list(target_modules),
+        bias=bias_value,
+        target_modules=target_modules if isinstance(target_modules, str) else list(target_modules),
         task_type=TaskType.CAUSAL_LM,
     )
 
@@ -211,12 +327,13 @@ def save_lora_adapter(model: torch.nn.Module, adapter_dir: str | Path, lora_conf
 
 def load_lora_adapter(model: torch.nn.Module, adapter_dir: str | Path) -> LoraConfig:
     adapter_dir = Path(adapter_dir)
-    lora_config = LoraConfig.from_pretrained(str(adapter_dir))
+    lora_config = cast(LoraConfig, LoraConfig.from_pretrained(str(adapter_dir)))
     inject_adapter_in_model(lora_config, model)
     adapter_state = load_file(str(adapter_dir / "adapter_model.safetensors"))
     outcome = set_peft_model_state_dict(model, adapter_state)
-    if getattr(outcome, "unexpected_keys", None):
-        raise ValueError(f"Unexpected adapter keys: {outcome.unexpected_keys}")
+    unexpected_keys = getattr(outcome, "unexpected_keys", None) if outcome is not None else None
+    if unexpected_keys:
+        raise ValueError(f"Unexpected adapter keys: {unexpected_keys}")
     return lora_config
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import re
 import sys
 import tempfile
 import unittest
@@ -122,14 +122,24 @@ artifacts:
             learning_rate=None,
             weight_decay=None,
             num_epochs=None,
+            warmup_ratio=None,
+            lr_scheduler_type=None,
             max_grad_norm=None,
             mixed_precision=None,
             logging_steps=None,
             sub_talker_loss_weight=None,
+            validation_jsonl=None,
+            validation_split_ratio=None,
+            validation_max_samples=None,
+            validation_seed=None,
+            early_stopping_patience=None,
+            early_stopping_min_delta=None,
             lora_r=None,
             lora_alpha=None,
             lora_dropout=None,
             lora_bias=None,
+            target_scope=None,
+            target_module_regex=None,
             target_modules=["q_proj", "v_proj"],
             extra_trainable_modules=["linear_fc1"],
         )
@@ -142,8 +152,45 @@ artifacts:
         self.assertEqual(resolved.speaker_id, 3001)
         self.assertEqual(resolved.torch_dtype, "fp16")
         self.assertEqual(resolved.target_modules, ["q_proj", "v_proj"])
+        self.assertEqual(resolved.target_scope, common.DEFAULT_TARGET_SCOPE)
+        self.assertRegex(resolved.target_module_pattern, r"talker\\.model\\.layers")
         self.assertEqual(resolved.extra_trainable_modules, ["linear_fc1"])
         self.assertTrue(resolved.local_files_only)
+
+    def test_build_target_module_regex_defaults_to_talker_only(self) -> None:
+        pattern = common.build_target_module_regex(["q_proj", "o_proj"], target_scope="talker_only")
+
+        self.assertIsNotNone(re.match(pattern, "talker.model.layers.0.self_attn.q_proj"))
+        self.assertIsNotNone(re.match(pattern, "talker.model.layers.12.self_attn.o_proj"))
+        self.assertIsNone(re.match(pattern, "talker.code_predictor.model.layers.0.self_attn.q_proj"))
+
+    def test_split_train_validation_data_is_deterministic(self) -> None:
+        records = [{"id": idx} for idx in range(10)]
+
+        train_records, validation_records, source = sft_12hz_lora.split_train_validation_data(
+            train_records=records,
+            validation_records=None,
+            validation_split_ratio=0.2,
+            validation_max_samples=3,
+            validation_seed=123,
+        )
+        train_records_2, validation_records_2, source_2 = sft_12hz_lora.split_train_validation_data(
+            train_records=records,
+            validation_records=None,
+            validation_split_ratio=0.2,
+            validation_max_samples=3,
+            validation_seed=123,
+        )
+
+        self.assertEqual(source, "train_split")
+        self.assertEqual(source_2, "train_split")
+        self.assertEqual(len(train_records), 8)
+        self.assertEqual(len(validation_records), 2)
+        self.assertEqual([record["id"] for record in train_records], [record["id"] for record in train_records_2])
+        self.assertEqual(
+            [record["id"] for record in validation_records],
+            [record["id"] for record in validation_records_2],
+        )
 
     def test_save_artifacts_writes_expected_training_outputs(self) -> None:
         output_dir = self.make_temp_dir() / "artifacts"
