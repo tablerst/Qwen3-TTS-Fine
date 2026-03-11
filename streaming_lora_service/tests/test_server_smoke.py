@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+import tempfile
+from typing import cast
 import unittest
 
 from fastapi.testclient import TestClient
 
-from streaming_lora_service.app.models import PublicVoiceProfile, SessionOptions, SynthesizedAudio
+from streaming_lora_service.app.models import LoadedBundle, PublicVoiceProfile, SessionOptions, SynthesizedAudio
 from streaming_lora_service.app.qwen_compat_ws import QwenRealtimeProtocolAdapter
-from streaming_lora_service.app.server import create_app
+from streaming_lora_service.app.server import RealtimeServerConfig, build_voice_registry, create_app
 from streaming_lora_service.app.voice_registry import VoiceRegistry
 
 
@@ -51,6 +56,11 @@ class FakeService:
 
 
 class ServerSmokeTests(unittest.TestCase):
+    def make_temp_dir(self) -> Path:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        return Path(temp_dir.name)
+
     def test_health_and_websocket_flow(self) -> None:
         app = create_app(service=FakeService())
         client = TestClient(app)
@@ -94,6 +104,37 @@ class ServerSmokeTests(unittest.TestCase):
                     "response.done",
                 ],
             )
+
+    def test_build_voice_registry_rejects_speaker_not_in_loaded_bundle(self) -> None:
+        work_dir = self.make_temp_dir()
+        registry_path = work_dir / "voice_registry.json"
+        registry_path.write_text(
+            json.dumps(
+                {
+                    "default_voice": "yachiyo_formal",
+                    "voices": {
+                        "yachiyo_formal": {
+                            "speaker_name": "inference_speaker",
+                            "supported_models": ["qwen3-tts-flash-realtime"],
+                        }
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        loaded_bundle = cast(LoadedBundle, SimpleNamespace(
+            speaker_name="yachiyo_formal",
+            qwen3tts=SimpleNamespace(model=SimpleNamespace(supported_speakers=["yachiyo_formal"])),
+        ))
+        config = RealtimeServerConfig(
+            bundle_dir=work_dir,
+            voice_registry_file=registry_path,
+        )
+
+        with self.assertRaisesRegex(ValueError, "Voice registry configured speaker names"):
+            build_voice_registry(config, loaded_bundle)
 
 
 if __name__ == "__main__":

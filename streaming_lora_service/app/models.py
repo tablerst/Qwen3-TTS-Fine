@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from typing import Any, Callable, Literal, Mapping
 
 SessionMode = Literal["server_commit", "commit"]
 
@@ -55,6 +55,10 @@ class SessionOptions:
         if mode not in ("server_commit", "commit"):
             raise ValueError(f"Unsupported session mode: {mode}")
 
+        response_format = str(session.get("response_format", "pcm")).lower()
+        if response_format not in ("pcm", "wav"):
+            raise ValueError(f"Unsupported response_format: {response_format}")
+
         model = str(session.get("model") or "").strip()
         voice = str(session.get("voice") or "").strip()
         if not model:
@@ -67,7 +71,7 @@ class SessionOptions:
             voice=voice,
             language_type=str(session.get("language_type", "Auto")),
             mode=mode,
-            response_format=str(session.get("response_format", "pcm")),
+            response_format=response_format,
             sample_rate=int(session.get("sample_rate", 24000)),
             instructions=str(session.get("instructions", "")),
             optimize_instructions=bool(session.get("optimize_instructions", False)),
@@ -86,3 +90,5 @@ class SynthesizedAudio:
     audio_bytes: bytes
     sample_rate: int
     channels: int = 1
+    codec_steps: int | None = None
+    decode_step_range: Callable[[int, int], bytes] | None = None

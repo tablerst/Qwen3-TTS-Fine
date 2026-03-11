@@ -2,7 +2,7 @@
   "default_voice": "yachiyo_formal",
   "voices": {
     "yachiyo_formal": {
-      "speaker_name": "inference_speaker",
+      "speaker_name": "yachiyo_formal",
       "supported_models": [
         "qwen3-tts-flash-realtime"
       ],

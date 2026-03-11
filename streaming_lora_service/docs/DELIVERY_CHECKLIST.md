@@ -26,9 +26,9 @@
 
 ## Phase 2：Runtime Session
 
-- [ ] 抽离 prompt builder
+- [x] 抽离 prompt builder
 - [x] 实现 session state 容器
-- [ ] 实现 step 级生成接口
+- [x] 实现 step 级生成接口
 - [x] 支持 `append_text()`
 - [x] 支持 `commit()`
 - [x] 支持 `clear_pending_text()`
@@ -36,7 +36,7 @@
 
 ## Phase 3：Incremental Decoder
 
-- [ ] 维护 codec ring buffer
+- [x] 维护 codec ring buffer
 - [x] 支持左上下文 overlap decode
 - [x] 输出新增音频字节
 - [x] 允许配置 `chunk_steps`
@@ -50,6 +50,7 @@
 - [x] 支持 `input_text_buffer.append`
 - [x] 支持 `input_text_buffer.commit`
 - [x] 支持 `input_text_buffer.clear`
+- [x] 下发 `input_text_buffer.cleared`
 - [x] 支持 `session.finish`
 - [x] 下发 `session.created / session.updated`
 - [x] 下发 `response.created`
@@ -76,8 +77,16 @@
 - [x] Realtime 协议 smoke 测试通过
 - [x] 服务级 WebSocket smoke 测试通过
 - [x] HTTP TTS smoke 测试通过
+- [x] 协议兼容细节 smoke 测试通过
 - [ ] 默认 LoRA bundle 真实模型人工试听通过
-- [ ] 记录首包延迟和默认 chunk 粒度表现
+- [x] 记录首包延迟和默认 chunk 粒度表现
+
+> 当前已生成验证产物：
+> - `docs/validation/20260311_real_bundle/metrics.json`
+> - `docs/validation/20260311_real_bundle/sample_01_zh_formal.wav`
+> - `docs/validation/20260311_real_bundle/sample_02_ja_formal.wav`
+>
+> 其中 TTFB 记录为：中文正式样本 `6377.98 ms`，日文正式样本 `5575.05 ms`。
 
 ## 当前代码骨架（已落地）
 
@@ -86,6 +95,8 @@
 - [x] `app/bundle_loader.py`
 - [x] `app/runtime_session.py`
 - [x] `app/incremental_decoder.py`
+- [x] `app/prompt_builder.py`
+- [x] `app/streaming_generator.py`
 - [x] `app/qwen_compat_ws.py`
 - [x] `app/audio_utils.py`
 - [x] `app/server.py`
@@ -94,17 +105,18 @@
 - [x] `tests/test_voice_registry.py`
 - [x] `tests/test_runtime_session.py`
 - [x] `tests/test_incremental_decoder.py`
+- [x] `tests/test_prompt_builder.py`
 - [x] `tests/test_protocol_smoke.py`
+- [x] `tests/test_protocol_streaming.py`
 - [x] `tests/test_server_smoke.py`
 - [x] `tests/test_http_tts_smoke.py`
+- [x] `tests/test_streaming_generator.py`
 
 ## 下一阶段（建议优先级）
 
-1. [ ] `qwen_compat_ws.py` 升级为 step-level 真流式 `response.audio.delta`
-2. [ ] `runtime_session` 接真实 prompt builder / step generator
-3. [ ] `incremental_decoder` 接真实 codec ring buffer
-4. [ ] 默认 bundle 人工试听回归
-5. [ ] 记录 TTFB / chunk 粒度指标
+1. [ ] 把当前 session 绑定状态继续推进到真正跨 append/commit 的增量 continuation 复用
+2. [ ] 默认 bundle 人工试听回归
+3. [ ] 扩充真实 bundle 的回归样本与指标基线
 
 ## 当前 MVP 说明
 
@@ -113,7 +125,8 @@
 - [x] 可运行 WebSocket 服务 MVP 已完成
 - [x] 可运行 HTTP TTS 服务 MVP 已完成
 - [x] `response.audio.delta` 分块下发 MVP 已完成
-- [ ] 真正的 step-level 流式内核仍未完成
+- [x] `custom_voice` 初版 step-level 流式内核已落地（prompt builder + stateful step generator + iterator 下发）
+- [ ] 人工试听结论与更完整的跨 append/commit continuation 仍待完成
 
 ## 首批默认配置建议
 

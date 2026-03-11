@@ -1,4 +1,6 @@
 from .app import (
+    AudioStepStreamer,
+    AudioStepStreamerConfig,
     BundleSpeechService,
     BundleArtifacts,
     BundleLoader,
@@ -21,9 +23,12 @@ from .app import (
     build_protocol_adapter,
     build_voice_registry,
     create_app,
+    generate_custom_voice_step_aware,
 )
 
 __all__ = [
+    "AudioStepStreamer",
+    "AudioStepStreamerConfig",
     "BundleSpeechService",
         "InMemoryAudioStore",
     "BundleArtifacts",
@@ -46,4 +51,5 @@ __all__ = [
     "build_protocol_adapter",
     "build_voice_registry",
     "create_app",
+    "generate_custom_voice_step_aware",
 ]

@@ -26,6 +26,7 @@ dependencies = [
   "gradio",
   "fastapi",
   "uvicorn",
+  "websockets>=12",
   "httpx",
   "librosa",
   "torchaudio",

@@ -127,6 +127,7 @@ V1 的主公开接口为 Realtime WebSocket。
 - `session.created`
 - `session.updated`
 - `input_text_buffer.committed`
+- `input_text_buffer.cleared`
 - `response.created`
 - `response.output_item.added`
 - `response.content_part.added`
@@ -143,6 +144,7 @@ V1 的主公开接口为 Realtime WebSocket。
 - `response.audio.delta` 为公开主输出形态；
 - 普通调用不暴露 `bundle_dir`；
 - V1 不再把旧自定义事件作为主协议继续维护。
+- 当前 `response.created` / `response.done` 中已补充 `modalities`、`conversation_id` 等更接近官方风格的字段。
 
 ## 6. HTTP TTS（建议共享同一套语义）
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 from itertools import count
 import re
-from typing import Any, Callable
+from typing import Any, Callable, Iterable, Iterator
 
 from .models import PublicVoiceProfile, SessionOptions, SynthesizedAudio
 from .runtime_session import RuntimeSession, RuntimeSessionError
@@ -17,12 +17,16 @@ class QwenRealtimeProtocolAdapter:
         *,
         session_factory: Callable[[str, SessionOptions], RuntimeSession] | None = None,
         synthesize_callback: Callable[[RuntimeSession, str], SynthesizedAudio] | None = None,
+        stream_synthesize_callback: Callable[[RuntimeSession, str], Iterable[bytes]] | None = None,
+        audio_chunker: Callable[[SynthesizedAudio], list[bytes]] | None = None,
         audio_chunk_duration_ms: int = 320,
         auto_commit_chars: int = 80,
     ) -> None:
         self.voice_registry = voice_registry
         self._session_factory = session_factory or RuntimeSession
         self._synthesize_callback = synthesize_callback
+        self._stream_synthesize_callback = stream_synthesize_callback
+        self._audio_chunker = audio_chunker
         self._audio_chunk_duration_ms = audio_chunk_duration_ms
         self._auto_commit_chars = auto_commit_chars
         self._session: RuntimeSession | None = None
@@ -46,31 +50,43 @@ class QwenRealtimeProtocolAdapter:
         ]
 
     def handle_event(self, event: dict[str, Any]) -> list[dict[str, Any]]:
+        return list(self.iter_events(event))
+
+    def iter_events(self, event: dict[str, Any]) -> Iterator[dict[str, Any]]:
         try:
             event_type = event.get("type")
             if not event_type:
-                return [self._error("invalid_value", "Missing field: type")]
+                yield self._error("invalid_value", "Missing field: type")
+                return
 
             if event_type == "session.update":
-                return self._handle_session_update(event)
+                yield from self._handle_session_update(event)
+                return
             if self._session is None:
-                return [self._error("invalid_state", "Session has not been initialized")]
+                yield self._error("invalid_state", "Session has not been initialized")
+                return
             if event_type == "input_text_buffer.append":
                 text = str(event.get("text", ""))
                 self._session.append_text(text)
                 if self._session.options.mode == "server_commit" and self._should_auto_commit():
-                    return self._handle_commit()
-                return []
+                    yield from self._iter_commit_events()
+                return
             if event_type == "input_text_buffer.commit":
-                return self._handle_commit()
+                yield from self._iter_commit_events()
+                return
             if event_type == "input_text_buffer.clear":
                 self._session.clear_pending_text()
-                return []
+                yield {
+                    "event_id": self._next_id("event", self._response_counter),
+                    "type": "input_text_buffer.cleared",
+                }
+                return
             if event_type == "session.finish":
-                return self._handle_finish()
-            return [self._error("invalid_value", f"Unsupported event type: {event_type}")]
+                yield from self._iter_finish_events()
+                return
+            yield self._error("invalid_value", f"Unsupported event type: {event_type}")
         except (RuntimeSessionError, VoiceRegistryError, ValueError) as exc:
-            return [self._error("invalid_value", str(exc))]
+            yield self._error("invalid_value", str(exc))
 
     def _handle_session_update(self, event: dict[str, Any]) -> list[dict[str, Any]]:
         try:
@@ -93,72 +109,79 @@ class QwenRealtimeProtocolAdapter:
         events.append({"event_id": self._next_id("event", self._response_counter), "type": "session.updated", "session": payload})
         return events
 
-    def _handle_commit(self) -> list[dict[str, Any]]:
+    def _iter_commit_events(self) -> Iterator[dict[str, Any]]:
         assert self._session is not None
         committed_text = self._session.commit()
-        return self._build_generation_events(committed_text)
+        yield from self._iter_generation_events(committed_text)
 
-    def _build_generation_events(self, committed_text: str) -> list[dict[str, Any]]:
+    def _iter_generation_events(self, committed_text: str) -> Iterator[dict[str, Any]]:
         assert self._session is not None
         response_id = self._next_id("resp", self._response_counter)
         item_id = self._next_id("item", self._item_counter)
-        events: list[dict[str, Any]] = [
-            {
-                "event_id": self._next_id("event", self._response_counter),
-                "type": "input_text_buffer.committed",
-                "item_id": item_id,
-                "text": committed_text,
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "input_text_buffer.committed",
+            "item_id": item_id,
+            "text": committed_text,
+        }
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.created",
+            "response": {
+                "id": response_id,
+                "object": "realtime.response",
+                "conversation_id": "",
+                "status": "in_progress",
+                "modalities": ["audio"],
+                "voice": self._session.options.voice,
+                "output": [],
             },
-            {
-                "event_id": self._next_id("event", self._response_counter),
-                "type": "response.created",
-                "response": {
-                    "id": response_id,
-                    "object": "realtime.response",
-                    "status": "in_progress",
-                    "voice": self._session.options.voice,
-                    "output": [],
-                },
+        }
+
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.output_item.added",
+            "response_id": response_id,
+            "output_index": 0,
+            "item": {
+                "id": item_id,
+                "object": "realtime.item",
+                "type": "message",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": [],
             },
-        ]
+        }
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.content_part.added",
+            "response_id": response_id,
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "part": {"type": "audio", "text": ""},
+        }
 
-        if self._synthesize_callback is None:
-            return events
-
-        synthesized = self._synthesize_callback(self._session, committed_text)
-        chunk_size_bytes = self._chunk_size_bytes(synthesized.sample_rate, synthesized.channels)
-        events.append(
-            {
-                "event_id": self._next_id("event", self._response_counter),
-                "type": "response.output_item.added",
-                "response_id": response_id,
-                "output_index": 0,
-                "item": {
-                    "id": item_id,
-                    "object": "realtime.item",
-                    "type": "message",
-                    "status": "in_progress",
-                    "role": "assistant",
-                    "content": [],
-                },
-            }
-        )
-        events.append(
-            {
-                "event_id": self._next_id("event", self._response_counter),
-                "type": "response.content_part.added",
-                "response_id": response_id,
-                "item_id": item_id,
-                "output_index": 0,
-                "content_index": 0,
-                "part": {"type": "audio", "text": ""},
-            }
-        )
-
-        if synthesized.audio_bytes:
-            for chunk in self._chunk_audio(synthesized.audio_bytes, chunk_size_bytes):
-                events.append(
-                    {
+        if self._stream_synthesize_callback is not None:
+            for chunk in self._stream_synthesize_callback(self._session, committed_text):
+                if not chunk:
+                    continue
+                yield {
+                    "event_id": self._next_id("event", self._response_counter),
+                    "type": "response.audio.delta",
+                    "response_id": response_id,
+                    "item_id": item_id,
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": base64.b64encode(chunk).decode("ascii"),
+                }
+        elif self._synthesize_callback is not None:
+            synthesized = self._synthesize_callback(self._session, committed_text)
+            chunk_size_bytes = self._chunk_size_bytes(synthesized.sample_rate, synthesized.channels)
+            if synthesized.audio_bytes:
+                chunks = self._audio_chunker(synthesized) if self._audio_chunker is not None else self._chunk_audio(synthesized.audio_bytes, chunk_size_bytes)
+                for chunk in chunks:
+                    yield {
                         "event_id": self._next_id("event", self._response_counter),
                         "type": "response.audio.delta",
                         "response_id": response_id,
@@ -167,79 +190,71 @@ class QwenRealtimeProtocolAdapter:
                         "content_index": 0,
                         "delta": base64.b64encode(chunk).decode("ascii"),
                     }
-                )
 
-        events.extend(
-            [
-                {
-                    "event_id": self._next_id("event", self._response_counter),
-                    "type": "response.audio.done",
-                    "response_id": response_id,
-                    "item_id": item_id,
-                    "output_index": 0,
-                    "content_index": 0,
-                },
-                {
-                    "event_id": self._next_id("event", self._response_counter),
-                    "type": "response.content_part.done",
-                    "response_id": response_id,
-                    "item_id": item_id,
-                    "output_index": 0,
-                    "content_index": 0,
-                    "part": {"type": "audio", "text": ""},
-                },
-                {
-                    "event_id": self._next_id("event", self._response_counter),
-                    "type": "response.output_item.done",
-                    "response_id": response_id,
-                    "output_index": 0,
-                    "item": {
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.audio.done",
+            "response_id": response_id,
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+        }
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.content_part.done",
+            "response_id": response_id,
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "part": {"type": "audio", "text": ""},
+        }
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.output_item.done",
+            "response_id": response_id,
+            "output_index": 0,
+            "item": {
+                "id": item_id,
+                "object": "realtime.item",
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{"type": "audio", "text": ""}],
+            },
+        }
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "response.done",
+            "response": {
+                "id": response_id,
+                "object": "realtime.response",
+                "conversation_id": "",
+                "status": "completed",
+                "modalities": ["audio"],
+                "voice": self._session.options.voice,
+                "output": [
+                    {
                         "id": item_id,
                         "object": "realtime.item",
                         "type": "message",
                         "status": "completed",
                         "role": "assistant",
                         "content": [{"type": "audio", "text": ""}],
-                    },
-                },
-                {
-                    "event_id": self._next_id("event", self._response_counter),
-                    "type": "response.done",
-                    "response": {
-                        "id": response_id,
-                        "object": "realtime.response",
-                        "status": "completed",
-                        "voice": self._session.options.voice,
-                        "output": [
-                            {
-                                "id": item_id,
-                                "object": "realtime.item",
-                                "type": "message",
-                                "status": "completed",
-                                "role": "assistant",
-                                "content": [{"type": "audio", "text": ""}],
-                            }
-                        ],
-                        "usage": {"characters": len(committed_text)},
-                    },
-                },
-            ]
-        )
-        return events
+                    }
+                ],
+                "usage": {"characters": len(committed_text)},
+            },
+        }
 
-    def _handle_finish(self) -> list[dict[str, Any]]:
+    def _iter_finish_events(self) -> Iterator[dict[str, Any]]:
         assert self._session is not None
         final_chunk = self._session.finish()
-        events: list[dict[str, Any]] = []
         if final_chunk:
-            events.extend(self._build_generation_events(final_chunk))
-        events.append(
-            {
-                "event_id": self._next_id("event", self._response_counter),
-                "type": "session.finished",
-            }
-        )
-        return events
+            yield from self._iter_generation_events(final_chunk)
+        yield {
+            "event_id": self._next_id("event", self._response_counter),
+            "type": "session.finished",
+        }
 
     def _session_payload(
         self,
@@ -256,6 +271,8 @@ class QwenRealtimeProtocolAdapter:
             "mode": options.mode,
             "response_format": options.response_format,
             "sample_rate": options.sample_rate,
+            "instructions": options.instructions,
+            "optimize_instructions": options.optimize_instructions,
         }
 
     def _should_auto_commit(self) -> bool:

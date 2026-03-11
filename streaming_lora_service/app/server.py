@@ -16,6 +16,10 @@ from .audio_utils import float_audio_to_pcm16le_bytes, pcm16le_bytes_to_wav_byte
 from .bundle_loader import BundleLoader
 from .models import LoadedBundle, SessionOptions, SynthesizedAudio
 from .qwen_compat_ws import QwenRealtimeProtocolAdapter
+from .runtime_session import RuntimeSession
+from .streaming_generator import StreamingCustomVoiceGenerator
+from .step_generator import generate_custom_voice_step_aware
+from .step_streamer import AudioStepStreamer, AudioStepStreamerConfig
 from .voice_registry import VoiceRegistry
 
 
@@ -26,6 +30,9 @@ class RealtimeServerDependencies:
     public_model_alias: str
     default_voice_alias: str
     audio_chunk_duration_ms: int = 320
+    chunk_steps: int = 4
+    left_context_steps: int = 25
+    samples_per_step: int = 1920
 
 
 @dataclass(frozen=True)
@@ -72,6 +79,9 @@ class RealtimeServerConfig:
     ws_path: str = "/api-ws/v1/realtime"
     health_path: str = "/healthz"
     audio_chunk_duration_ms: int = 320
+    chunk_steps: int = 4
+    left_context_steps: int = 25
+    samples_per_step: int = 1920
     device_map: str = "cuda:0"
     torch_dtype: str = "bfloat16"
     attn_implementation: str = "sdpa"
@@ -82,6 +92,13 @@ class BundleSpeechService:
     def __init__(self, deps: RealtimeServerDependencies, *, audio_store: InMemoryAudioStore | None = None) -> None:
         self.deps = deps
         self.audio_store = audio_store or InMemoryAudioStore()
+        self.step_streamer = AudioStepStreamer(
+            AudioStepStreamerConfig(
+                samples_per_step=self.deps.samples_per_step,
+                chunk_steps=self.deps.chunk_steps,
+                left_context_steps=self.deps.left_context_steps,
+            )
+        )
 
     @property
     def public_model_alias(self) -> str:
@@ -101,6 +118,8 @@ class BundleSpeechService:
         return QwenRealtimeProtocolAdapter(
             voice_registry=self.deps.voice_registry,
             synthesize_callback=self.synthesize,
+            stream_synthesize_callback=self.stream_synthesize,
+            audio_chunker=self.iter_stream_chunks,
             audio_chunk_duration_ms=self.deps.audio_chunk_duration_ms,
         )
 
@@ -118,14 +137,13 @@ class BundleSpeechService:
 
     def synthesize(self, session, text: str) -> SynthesizedAudio:
         profile = self.deps.voice_registry.resolve(session.options.voice, model=session.options.model)
-        wavs, sample_rate = self.deps.loaded_bundle.qwen3tts.generate_custom_voice(
+        return generate_custom_voice_step_aware(
+            self.deps.loaded_bundle.qwen3tts,
             text=text,
             language=session.options.language_type,
             speaker=profile.speaker_name,
             instruct=session.options.instructions or None,
         )
-        audio_bytes = float_audio_to_pcm16le_bytes(wavs[0])
-        return SynthesizedAudio(audio_bytes=audio_bytes, sample_rate=int(sample_rate), channels=1)
 
     def synthesize_http(self, *, text: str, model: str, voice: str, language_type: str, instructions: str = "") -> SynthesizedAudio:
         options = SessionOptions(
@@ -134,8 +152,32 @@ class BundleSpeechService:
             language_type=language_type,
             instructions=instructions,
         )
-        runtime_session = type("RequestSession", (), {"options": options})()
+        runtime_session = RuntimeSession(session_id=f"http_{uuid4().hex}", options=options)
         return self.synthesize(runtime_session, text)
+
+    def stream_synthesize(self, session, text: str):
+        profile = self.deps.voice_registry.resolve(session.options.voice, model=session.options.model)
+        generator = StreamingCustomVoiceGenerator(
+            self.deps.loaded_bundle.qwen3tts,
+            text=text,
+            language=session.options.language_type,
+            speaker=profile.speaker_name,
+            instruct=session.options.instructions or None,
+            runtime_session=session,
+            chunk_steps=self.deps.chunk_steps,
+            left_context_steps=self.deps.left_context_steps,
+        )
+        yield from generator.iter_audio_chunks()
+
+    def stream_synthesize_http(self, *, text: str, model: str, voice: str, language_type: str, instructions: str = ""):
+        options = SessionOptions(
+            model=model,
+            voice=voice,
+            language_type=language_type,
+            instructions=instructions,
+        )
+        runtime_session = RuntimeSession(session_id=f"http_{uuid4().hex}", options=options)
+        yield from self.stream_synthesize(runtime_session, text)
 
     def store_wav_asset(self, synthesized: SynthesizedAudio) -> StoredAudioAsset:
         wav_bytes = pcm16le_bytes_to_wav_bytes(
@@ -145,16 +187,39 @@ class BundleSpeechService:
         )
         return self.audio_store.save(wav_bytes, media_type="audio/wav")
 
+    def iter_stream_chunks(self, synthesized: SynthesizedAudio) -> list[bytes]:
+        return self.step_streamer.iter_audio_chunks(synthesized)
+
 
 def build_voice_registry(config: RealtimeServerConfig, loaded_bundle: LoadedBundle) -> VoiceRegistry:
     if config.voice_registry_file is not None:
-        return VoiceRegistry.from_file(config.voice_registry_file)
-    return VoiceRegistry.single_voice(
+        registry = VoiceRegistry.from_file(config.voice_registry_file)
+    else:
+        registry = VoiceRegistry.single_voice(
         voice_alias=config.default_voice_alias,
         speaker_name=loaded_bundle.speaker_name,
         model_alias=config.public_model_alias,
         description="Default voice derived from the loaded LoRA bundle",
-    )
+        )
+
+    supported_speakers = getattr(loaded_bundle.qwen3tts.model, "supported_speakers", None)
+    if supported_speakers is not None:
+        supported = {str(item) for item in supported_speakers}
+        invalid_profiles = [
+            profile
+            for profile in registry.list_profiles()
+            if profile.speaker_name not in supported
+        ]
+        if invalid_profiles:
+            invalid_summary = ", ".join(
+                f"{profile.voice_alias}->{profile.speaker_name}" for profile in invalid_profiles
+            )
+            raise ValueError(
+                "Voice registry configured speaker names that are not available in the loaded bundle: "
+                f"{invalid_summary}. Supported speakers: {sorted(supported)}"
+            )
+
+    return registry
 
 
 def build_dependencies(
@@ -177,6 +242,9 @@ def build_dependencies(
         public_model_alias=config.public_model_alias,
         default_voice_alias=voice_registry.default_voice or config.default_voice_alias,
         audio_chunk_duration_ms=config.audio_chunk_duration_ms,
+        chunk_steps=config.chunk_steps,
+        left_context_steps=config.left_context_steps,
+        samples_per_step=config.samples_per_step,
     )
 
 
@@ -199,6 +267,13 @@ def create_app(
     health_path = config.health_path if config is not None else "/healthz"
 
     app = FastAPI(title="Qwen-Compatible Realtime TTS MVP")
+
+    def fallback_stream_chunks(synthesized: SynthesizedAudio) -> list[bytes]:
+        chunk_size_bytes = max(1, int(synthesized.sample_rate * 0.32)) * max(1, synthesized.channels) * 2
+        return [
+            synthesized.audio_bytes[idx : idx + chunk_size_bytes]
+            for idx in range(0, len(synthesized.audio_bytes), chunk_size_bytes)
+        ]
 
     def build_tts_response(request_id: str, audio_id: str, audio_url: str, *, characters: int, audio_data: str = "", finish_reason: str = "stop") -> dict[str, Any]:
         return {
@@ -248,18 +323,18 @@ def create_app(
     @app.post("/v1/audio/speech")
     @app.post("/api/v1/services/aigc/multimodal-generation/generation")
     async def tts(request: Request, payload: TTSRequest):
-        synthesized = service.synthesize_http(
-            text=payload.text,
-            model=payload.model,
-            voice=payload.voice,
-            language_type=payload.language_type,
-            instructions=payload.instructions,
-        )
-        asset = service.store_wav_asset(synthesized)
-        audio_url = str(request.url_for("get_audio", audio_id=asset.audio_id))
         request_id = f"req_{uuid4().hex}"
 
         if not payload.stream:
+            synthesized = service.synthesize_http(
+                text=payload.text,
+                model=payload.model,
+                voice=payload.voice,
+                language_type=payload.language_type,
+                instructions=payload.instructions,
+            )
+            asset = service.store_wav_asset(synthesized)
+            audio_url = str(request.url_for("get_audio", audio_id=asset.audio_id))
             return build_tts_response(
                 request_id,
                 asset.audio_id,
@@ -267,25 +342,58 @@ def create_app(
                 characters=len(payload.text),
             )
 
-        chunk_size_bytes = max(1, int(synthesized.sample_rate * 0.32)) * max(1, synthesized.channels) * 2
-        chunks = [
-            synthesized.audio_bytes[idx : idx + chunk_size_bytes]
-            for idx in range(0, len(synthesized.audio_bytes), chunk_size_bytes)
-        ]
-
         async def stream_generator():
-            for chunk in chunks:
+            if hasattr(service, "stream_synthesize_http"):
+                chunk_iterable = service.stream_synthesize_http(
+                    text=payload.text,
+                    model=payload.model,
+                    voice=payload.voice,
+                    language_type=payload.language_type,
+                    instructions=payload.instructions,
+                )
+                stream_sample_rate = 24000
+            elif hasattr(service, "iter_stream_chunks"):
+                synthesized = service.synthesize_http(
+                    text=payload.text,
+                    model=payload.model,
+                    voice=payload.voice,
+                    language_type=payload.language_type,
+                    instructions=payload.instructions,
+                )
+                chunk_iterable = service.iter_stream_chunks(synthesized)
+                stream_sample_rate = synthesized.sample_rate
+            else:
+                synthesized = service.synthesize_http(
+                    text=payload.text,
+                    model=payload.model,
+                    voice=payload.voice,
+                    language_type=payload.language_type,
+                    instructions=payload.instructions,
+                )
+                chunk_iterable = fallback_stream_chunks(synthesized)
+                stream_sample_rate = synthesized.sample_rate
+
+            collected_audio = bytearray()
+
+            for chunk in chunk_iterable:
+                collected_audio.extend(chunk)
                 yield json.dumps(
                     build_tts_response(
                         request_id,
-                        asset.audio_id,
-                        audio_url,
+                        "",
+                        "",
                         characters=len(payload.text),
                         audio_data=base64.b64encode(chunk).decode("ascii"),
                         finish_reason="null",
                     ),
                     ensure_ascii=False,
                 ) + "\n"
+
+            asset = service.audio_store.save(
+                pcm16le_bytes_to_wav_bytes(bytes(collected_audio), sample_rate=stream_sample_rate),
+                media_type="audio/wav",
+            )
+            audio_url = str(request.url_for("get_audio", audio_id=asset.audio_id))
             yield json.dumps(
                 build_tts_response(
                     request_id,
@@ -308,7 +416,7 @@ def create_app(
         try:
             while True:
                 event = await websocket.receive_json()
-                for response_event in adapter.handle_event(event):
+                for response_event in adapter.iter_events(event):
                     await websocket.send_json(response_event)
         except WebSocketDisconnect:
             return
@@ -327,6 +435,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ws_path", default="/api-ws/v1/realtime")
     parser.add_argument("--health_path", default="/healthz")
     parser.add_argument("--audio_chunk_duration_ms", type=int, default=320)
+    parser.add_argument("--chunk_steps", type=int, default=4)
+    parser.add_argument("--left_context_steps", type=int, default=25)
+    parser.add_argument("--samples_per_step", type=int, default=1920)
     parser.add_argument("--device_map", default="cuda:0")
     parser.add_argument("--torch_dtype", default="bfloat16")
     parser.add_argument("--attn_implementation", default="sdpa")
@@ -348,6 +459,9 @@ def main() -> None:
         ws_path=args.ws_path,
         health_path=args.health_path,
         audio_chunk_duration_ms=args.audio_chunk_duration_ms,
+        chunk_steps=args.chunk_steps,
+        left_context_steps=args.left_context_steps,
+        samples_per_step=args.samples_per_step,
         device_map=args.device_map,
         torch_dtype=args.torch_dtype,
         attn_implementation=args.attn_implementation,
@@ -355,3 +469,7 @@ def main() -> None:
     )
     app = create_app(config=config)
     uvicorn.run(app, host=config.host, port=config.port)
+
+
+if __name__ == "__main__":
+    main()

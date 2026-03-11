@@ -82,7 +82,31 @@ class ProtocolSmokeTests(unittest.TestCase):
         )
         self.assertEqual(events[0]["text"], "你好，世界。")
         self.assertEqual(events[1]["response"]["status"], "in_progress")
+        self.assertEqual(events[1]["response"]["modalities"], ["audio"])
         self.assertTrue(events[4]["delta"])
+
+    def test_clear_returns_official_cleared_event(self) -> None:
+        adapter = self.make_adapter()
+        adapter.open_connection(
+            SessionOptions(
+                model="qwen3-tts-flash-realtime",
+                voice="yachiyo_formal",
+            )
+        )
+        adapter.handle_event(
+            {
+                "type": "session.update",
+                "session": {
+                    "model": "qwen3-tts-flash-realtime",
+                    "voice": "yachiyo_formal",
+                },
+            }
+        )
+        adapter.handle_event({"type": "input_text_buffer.append", "text": "将被清除的文本"})
+
+        events = adapter.handle_event({"type": "input_text_buffer.clear"})
+
+        self.assertEqual(events, [{"event_id": events[0]["event_id"], "type": "input_text_buffer.cleared"}])
 
     def test_finish_returns_response_done_and_session_finished(self) -> None:
         adapter = self.make_adapter()

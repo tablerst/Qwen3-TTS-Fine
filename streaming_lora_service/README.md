@@ -120,6 +120,8 @@ V1 暂不追求：
 - `app/bundle_loader.py`：默认 LoRA bundle 解析与加载骨架
 - `app/runtime_session.py`：文本缓冲区 / commit / finish 状态机骨架
 - `app/incremental_decoder.py`：增量解码规划与 overlap 裁剪逻辑骨架
+- `app/prompt_builder.py`：`custom_voice` 场景的 talker prefill / sampling 配置构建
+- `app/streaming_generator.py`：stateful step-level codec 生成与增量音频输出
 - `app/qwen_compat_ws.py`：Qwen-compatible Realtime 事件适配器 MVP
 - `app/server.py`：可启动的 FastAPI WebSocket 服务 MVP
 - `app/audio_utils.py`：浮点音频转 PCM16 与 chunk 切分工具
@@ -131,14 +133,23 @@ V1 暂不追求：
 - `tests/test_voice_registry.py`
 - `tests/test_runtime_session.py`
 - `tests/test_incremental_decoder.py`
+- `tests/test_prompt_builder.py`
 - `tests/test_protocol_smoke.py`
+- `tests/test_protocol_streaming.py`
 - `tests/test_server_smoke.py`
 - `tests/test_http_tts_smoke.py`
+- `tests/test_streaming_generator.py`
 
 并已完成一次本地验证：
 
 - `python -m unittest discover -s streaming_lora_service/tests -v`
-- 结果：**18 个测试全部通过**
+- 结果：**27 个测试全部通过**
+
+并已补充一轮默认 bundle 的真实端到端验证产物：
+
+- 指标记录：`docs/validation/20260311_real_bundle/metrics.json`
+- 试听样本：`docs/validation/20260311_real_bundle/sample_01_zh_formal.wav`
+- 试听样本：`docs/validation/20260311_real_bundle/sample_02_ja_formal.wav`
 
 ## 当前 MVP 能力边界
 
@@ -148,36 +159,46 @@ V1 暂不追求：
 - 通过官方风格 WebSocket 事件对外提供能力
 - 通过官方风格 HTTP 请求/响应字段对外提供能力
 - 支持 `session.update / input_text_buffer.append / input_text_buffer.commit / input_text_buffer.clear / session.finish`
+- 支持服务端 `input_text_buffer.cleared` 事件
 - 支持 `response.audio.delta / response.audio.done / response.done / session.finished`
 - 提供 `/healthz` 与 `/v1/voices` 两个基础 HTTP 端点
 - 提供 HTTP TTS 路由：`/v1/tts`、`/v1/audio/speech`、`/api/v1/services/aigc/multimodal-generation/generation`
 - 提供音频下载路由：`/v1/audio/{audio_id}`
 - 支持从 JSON / YAML voice registry 文件加载公开 `voice` 别名映射
+- `custom_voice` 场景已具备初版 step-level 流式内核：`prompt_builder -> StreamingCustomVoiceGenerator -> IncrementalAudioDecoder -> response.audio.delta`
+- WebSocket Realtime 与 HTTP `stream=true` 已可复用同一条 stateful step generator 链路
 
 当前**尚未完成**的部分也需要明确说明：
 
-- `response.audio.delta` 目前是基于现有 `generate_custom_voice()` 一次性生成后的**分块下发 MVP**；
-- 还不是严格意义上的 step-level 真流式生成；
-- 真正的 prompt builder / step generator / 增量 codec 级生成仍是下一阶段工作。
+- `runtime_session` 已可绑定真实生成状态，并持久保存 `past_key_values / past_hidden / generated_codes / incremental_decoder`，为后续跨 append/commit 复用打底；
+- `incremental_decoder` 已升级为 codec ring buffer + overlap decode 组合；
+- 默认 LoRA bundle 的真实端到端 TTFB / chunk 粒度指标已经记录，但**人工试听结论**仍需最终确认。
 
 也就是说：
 
 > **当前 MVP 已经可用、可跑、可联调；**
-> **但它是“官方风格兼容优先”的 MVP，不是最终版真流式内核。**
+> **并且 `custom_voice` 的初版真流式内核已经接进公开服务路径；**
+> **但它还不是“全部优化项都完成”的最终稳态版本。**
 
 ## 如何启动 MVP
 
 安装完依赖并确保默认 LoRA bundle 可用后，可直接启动：
 
 ```text
-qwen-tts-realtime-serve --bundle_dir <path_to_bundle>
+python -m streaming_lora_service.app.server --bundle_dir <path_to_bundle>
 ```
 
 常见参数示例：
 
 ```text
-qwen-tts-realtime-serve --bundle_dir outputs/lora_formal_single_speaker_1p7b_bundle --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_formal --voice_registry_file streaming_lora_service/configs/voice_registry.example.json --host 127.0.0.1 --port 9000
+python -m streaming_lora_service.app.server --bundle_dir outputs/lora_formal_single_speaker_1p7b_timbre_transfer_20260310_bundle_best_refcand8 --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_formal --voice_registry_file streaming_lora_service/configs/voice_registry.example.json --host 0.0.0.0 --port 9010 --local_files_only
 ```
+
+说明：
+
+- 当前仓库已经验证 `python -m streaming_lora_service.app.server ...` 可以直接启动服务；
+- 如果只做本机联调，可把 `--host 0.0.0.0` 改回 `127.0.0.1`；
+- 如果要给局域网其他机器联调，保留 `--host 0.0.0.0` 并放行对应端口。
 
 默认端点：
 
@@ -191,12 +212,11 @@ qwen-tts-realtime-serve --bundle_dir outputs/lora_formal_single_speaker_1p7b_bun
 
 ## 下一阶段建议
 
-下一阶段建议优先补下面 4 件事：
+下一阶段建议优先补下面 3 件事：
 
-1. `qwen_compat_ws.py` 从一次性生成分块下发升级到真正 step-level 音频下发
-2. `runtime_session` 接真实 prompt builder / step generator
-3. `incremental_decoder` 接真实 codec ring buffer
-4. 增加真实 bundle 的端到端联调与试听回归
+1. 把“已绑定的会话状态”继续推进到真正跨 append/commit 的增量 continuation 复用
+2. 增加默认 bundle 的人工试听结论与主观质量记录
+3. 继续补真实 bundle 的端到端回归样本与指标基线
 
 ## 先读哪几份文档
 
