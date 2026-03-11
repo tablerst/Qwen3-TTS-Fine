@@ -1,297 +1,480 @@
-# WebSocket Protocol
+# Qwen-Compatible Realtime WebSocket Protocol
 
-## 1. 设计目标
+## 1. 协议定位
 
-协议目标是支持：
+本协议是本项目面向第三方的 **Qwen-compatible Realtime TTS** 公开协议。
 
-- 持续上行文本增量
-- 持续下行音频 chunk
-- 明确的会话生命周期
-- 可观测的错误与指标
+协议目标不是继续维护旧的自定义事件：
 
-V1 协议默认围绕 `custom_voice + bundle_dir` 设计。
+- `session.start`
+- `text.delta`
+- `text.flush`
+- `session.stop`
+- `session.cancel`
 
-## 2. 连接模型
+而是从第一版开始直接采用**官方 Qwen-TTS-Realtime 风格**的事件与字段命名。
 
-- 一个 WebSocket 连接对应一个活跃 session
-- 一次连接只服务一个 speaker profile
-- 如果后续需要多 session 复用，建议另开 v2 协议，而不是直接把 V1 搅浑
+## 2. 兼容目标
 
-## 3. 客户端 -> 服务端消息
+V1 的兼容目标是：
 
-所有控制消息使用 JSON 文本帧。
+- **事件级兼容优先**：优先兼容官方事件名、字段名和会话节奏；
+- **语义级兼容优先**：优先兼容 `server_commit` / `commit` 两种使用模式；
+- **实现级不强绑定**：内部 runtime 仍由本仓库自己的 LoRA + 流式生成链路实现；
+- **部署级 LoRA 隐藏**：客户端不需要理解 `bundle_dir`、`adapter_dir` 等内部细节。
 
-### 3.1 `session.start`
+V1 不要求：
 
-用途：初始化会话。
+- 完整 DashScope 路径级兼容；
+- 完整鉴权头 / SDK 行为的逐字节兼容；
+- 把内部二进制 PCM 通道暴露为公开协议主形态。
 
-```json
-{
-  "type": "session.start",
-  "request_id": "req-001",
-  "audio": {
-    "format": "pcm_s16le",
-    "sample_rate": 24000
-  },
-  "voice": {
-    "speaker": "inference_speaker",
-    "language": "Auto",
-    "instruct": ""
-  },
-  "generation": {
-    "chunk_steps": 4,
-    "max_new_tokens": 2048,
-    "temperature": 0.9,
-    "top_k": 50,
-    "top_p": 1.0,
-    "repetition_penalty": 1.05
-  }
-}
-```
+## 3. 连接模型
 
-说明：
+- 一个 WebSocket 连接对应一个活跃 session；
+- 一个 session 在 V1 中只绑定一个公开 `model` 与一个公开 `voice`；
+- `model` / `voice` 是**对外稳定别名**，内部由服务解析到默认 LoRA bundle 与 speaker profile；
+- 调用方无需感知 bundle 路由细节。
 
-- `speaker` 默认应与 bundle 内 speaker 一致；
-- V1 可以只允许 bundle 中唯一 speaker；
-- `chunk_steps` 可选，服务端可做裁剪与兜底。
+## 4. 客户端 -> 服务端事件
 
-### 3.2 `text.delta`
+所有客户端事件使用 JSON 文本帧。
 
-用途：提交文本增量。
+### 4.1 `session.update`
+
+用途：初始化或更新会话配置。
 
 ```json
 {
-  "type": "text.delta",
-  "text": "你好，今天"
-}
-```
-
-说明：
-
-- 服务端收到后追加到 `raw_text_buffer`；
-- 不保证立刻全部提交给模型；
-- 由 commit policy 决定稳定前缀。
-
-### 3.3 `text.flush`
-
-用途：强制提交当前未稳定尾部。
-
-```json
-{
-  "type": "text.flush"
-}
-```
-
-适用场景：
-
-- 用户停顿
-- 当前一轮输入结束
-- 需要尽快让模型把手头文本说完
-
-### 3.4 `session.stop`
-
-用途：优雅结束会话。
-
-```json
-{
-  "type": "session.stop"
-}
-```
-
-语义：
-
-- 服务端尽量发送已生成但尚未发出的尾部音频；
-- 然后返回 `session.completed`。
-
-### 3.5 `session.cancel`
-
-用途：立即终止会话。
-
-```json
-{
-  "type": "session.cancel"
-}
-```
-
-语义：
-
-- 立即停止生成；
-- 可丢弃未发音频；
-- 返回 `session.cancelled`。
-
-## 4. 服务端 -> 客户端消息
-
-### 4.1 `session.ready`
-
-```json
-{
-  "type": "session.ready",
-  "session_id": "sess-001",
-  "audio": {
-    "format": "pcm_s16le",
+  "event_id": "event_123",
+  "type": "session.update",
+  "session": {
+    "model": "qwen3-tts-flash-realtime",
+    "voice": "yachiyo_formal",
+    "language_type": "Chinese",
+    "mode": "server_commit",
+    "response_format": "pcm",
     "sample_rate": 24000,
-    "channels": 1
-  },
-  "voice": {
-    "speaker": "inference_speaker",
-    "language": "Auto"
+    "instructions": "",
+    "optimize_instructions": false
   }
-}
-```
-
-### 4.2 `audio.chunk.meta`
-
-建议使用一个 JSON 元信息帧，紧接着一个二进制帧。
-
-元信息示例：
-
-```json
-{
-  "type": "audio.chunk.meta",
-  "seq": 1,
-  "samples": 7680,
-  "sample_rate": 24000,
-  "is_final": false
-}
-```
-
-紧随其后的二进制帧：
-
-- 内容：PCM16 little-endian
-- 长度：`samples * 2` bytes
-
-### 4.3 `metrics`
-
-```json
-{
-  "type": "metrics",
-  "ttfb_ms": 420,
-  "generated_steps": 12,
-  "emitted_chunks": 3
 }
 ```
 
 说明：
 
-- V1 可以低频发送，例如首包后一次、会话结束时一次；
-- 不建议每个 step 都发，太吵。
+- `model` / `voice` 为对外公开标识，而不是内部文件路径；
+- 服务端可将其映射到默认 LoRA bundle 与目标 speaker；
+- 常规第三方调用不需要知道 `bundle_dir`；
+- V1 推荐默认 `response_format=pcm`、`sample_rate=24000`。
 
-### 4.4 `session.completed`
+### 4.2 `input_text_buffer.append`
 
-```json
-{
-  "type": "session.completed",
-  "reason": "stop",
-  "generated_steps": 36,
-  "emitted_chunks": 9
-}
-```
-
-### 4.5 `session.cancelled`
+用途：向文本缓冲区追加待合成文本。
 
 ```json
 {
-  "type": "session.cancelled",
-  "reason": "client_cancel"
+  "event_id": "event_124",
+  "type": "input_text_buffer.append",
+  "text": "你好，今天我们来介绍新产品。"
 }
 ```
 
-### 4.6 `session.error`
+说明：
+
+- 在 `server_commit` 模式下，服务端负责判断切分与触发时机；
+- 在 `commit` 模式下，仅追加文本，不立即触发合成。
+
+### 4.3 `input_text_buffer.commit`
+
+用途：提交当前缓冲区文本。
 
 ```json
 {
-  "type": "session.error",
-  "code": "INVALID_MESSAGE",
-  "message": "Missing field: type"
+  "event_id": "event_125",
+  "type": "input_text_buffer.commit"
 }
 ```
 
-## 5. 错误码建议
+说明：
 
-建议至少包含：
+- `server_commit` 模式下可视作“立即把当前尾部文本说出来”；
+- `commit` 模式下必须显式发送该事件，才会触发音频生成流程。
 
-- `INVALID_MESSAGE`
-- `INVALID_STATE`
-- `UNSUPPORTED_SPEAKER`
-- `UNSUPPORTED_LANGUAGE`
-- `MODEL_NOT_READY`
-- `SESSION_ALREADY_STARTED`
-- `SESSION_NOT_STARTED`
-- `GENERATION_FAILED`
-- `DECODE_FAILED`
-- `SERVER_OVERLOADED`
+### 4.4 `input_text_buffer.clear`
 
-## 6. 时序建议
+用途：清空当前尚未提交的文本缓冲区。
 
-### 6.1 正常流程
+```json
+{
+  "event_id": "event_126",
+  "type": "input_text_buffer.clear"
+}
+```
+
+### 4.5 `session.finish`
+
+用途：通知服务端不会再有后续文本输入。
+
+```json
+{
+  "event_id": "event_127",
+  "type": "session.finish"
+}
+```
+
+语义：
+
+- 服务端尽量把剩余已生成音频发送完；
+- 然后返回 `response.done` 与 `session.finished`；
+- 公开协议不再使用自定义 `session.stop` / `session.cancel` 作为主事件名。
+
+## 5. 服务端 -> 客户端事件
+
+### 5.1 `session.created`
+
+连接建立后，服务端返回默认或当前会话配置。
+
+```json
+{
+  "event_id": "event_srv_001",
+  "type": "session.created",
+  "session": {
+    "object": "realtime.session",
+    "id": "sess_001",
+    "model": "qwen3-tts-flash-realtime",
+    "voice": "yachiyo_formal",
+    "mode": "server_commit",
+    "response_format": "pcm",
+    "sample_rate": 24000
+  }
+}
+```
+
+### 5.2 `session.updated`
+
+服务端成功应用 `session.update` 后返回。
+
+```json
+{
+  "event_id": "event_srv_002",
+  "type": "session.updated",
+  "session": {
+    "object": "realtime.session",
+    "id": "sess_001",
+    "model": "qwen3-tts-flash-realtime",
+    "voice": "yachiyo_formal",
+    "language_type": "Chinese",
+    "mode": "server_commit",
+    "response_format": "pcm",
+    "sample_rate": 24000
+  }
+}
+```
+
+### 5.3 `input_text_buffer.committed`
+
+服务端确认一次文本提交。
+
+```json
+{
+  "event_id": "event_srv_003",
+  "type": "input_text_buffer.committed",
+  "item_id": "item_001"
+}
+```
+
+### 5.4 `response.created`
+
+服务端开始生成一轮音频响应时返回。
+
+```json
+{
+  "event_id": "event_srv_004",
+  "type": "response.created",
+  "response": {
+    "id": "resp_001",
+    "object": "realtime.response",
+    "status": "in_progress",
+    "voice": "yachiyo_formal",
+    "output": []
+  }
+}
+```
+
+### 5.5 `response.output_item.added`
+
+当新的输出 item 建立时返回。
+
+```json
+{
+  "event_id": "event_srv_005",
+  "type": "response.output_item.added",
+  "response_id": "resp_001",
+  "output_index": 0,
+  "item": {
+    "id": "item_001",
+    "object": "realtime.item",
+    "type": "message",
+    "status": "in_progress",
+    "role": "assistant",
+    "content": []
+  }
+}
+```
+
+### 5.6 `response.content_part.added`
+
+当新的内容 part（通常是音频 part）建立时返回。
+
+```json
+{
+  "event_id": "event_srv_006",
+  "type": "response.content_part.added",
+  "response_id": "resp_001",
+  "item_id": "item_001",
+  "output_index": 0,
+  "content_index": 0,
+  "part": {
+    "type": "audio",
+    "text": ""
+  }
+}
+```
+
+### 5.7 `response.audio.delta`
+
+当模型产生新增音频片段时返回。
+
+```json
+{
+  "event_id": "event_srv_007",
+  "type": "response.audio.delta",
+  "response_id": "resp_001",
+  "item_id": "item_001",
+  "output_index": 0,
+  "content_index": 0,
+  "delta": "<base64-encoded-audio-chunk>"
+}
+```
+
+说明：
+
+- V1 公开协议主形态为 **Base64 音频块**；
+- 推荐内容为 24kHz 单声道 PCM16 对应的字节流编码结果；
+- 不再把 `audio.chunk.meta + binary pcm` 作为公开协议标准；
+- 若未来保留二进制 PCM 通道，应作为内部/native 扩展能力，不纳入主公开协议。
+
+### 5.8 `response.audio.done`
+
+当前音频内容 part 已完成。
+
+```json
+{
+  "event_id": "event_srv_008",
+  "type": "response.audio.done",
+  "response_id": "resp_001",
+  "item_id": "item_001",
+  "output_index": 0,
+  "content_index": 0
+}
+```
+
+### 5.9 `response.content_part.done`
+
+```json
+{
+  "event_id": "event_srv_009",
+  "type": "response.content_part.done",
+  "response_id": "resp_001",
+  "item_id": "item_001",
+  "output_index": 0,
+  "content_index": 0,
+  "part": {
+    "type": "audio",
+    "text": ""
+  }
+}
+```
+
+### 5.10 `response.output_item.done`
+
+```json
+{
+  "event_id": "event_srv_010",
+  "type": "response.output_item.done",
+  "response_id": "resp_001",
+  "output_index": 0,
+  "item": {
+    "id": "item_001",
+    "object": "realtime.item",
+    "type": "message",
+    "status": "completed",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "audio",
+        "text": ""
+      }
+    ]
+  }
+}
+```
+
+### 5.11 `response.done`
+
+一轮响应完成时返回。
+
+```json
+{
+  "event_id": "event_srv_011",
+  "type": "response.done",
+  "response": {
+    "id": "resp_001",
+    "object": "realtime.response",
+    "status": "completed",
+    "voice": "yachiyo_formal",
+    "output": [
+      {
+        "id": "item_001",
+        "object": "realtime.item",
+        "type": "message",
+        "status": "completed",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "audio",
+            "text": ""
+          }
+        ]
+      }
+    ],
+    "usage": {
+      "characters": 24
+    }
+  }
+}
+```
+
+### 5.12 `session.finished`
+
+会话生命周期结束时返回。
+
+```json
+{
+  "event_id": "event_srv_012",
+  "type": "session.finished"
+}
+```
+
+### 5.13 `error`
+
+出现客户端输入错误或服务端错误时返回。
+
+```json
+{
+  "event_id": "event_srv_err_001",
+  "type": "error",
+  "error": {
+    "code": "invalid_value",
+    "message": "Unsupported voice: yachiyo_unknown"
+  }
+}
+```
+
+## 6. 模式说明
+
+### 6.1 `server_commit`
+
+- 客户端只需持续发送 `input_text_buffer.append`；
+- 服务端根据内部 commit policy 判断文本切分与生成时机；
+- 若客户端主动发送 `input_text_buffer.commit`，表示“立即把当前尾部文本交给模型”。
+
+### 6.2 `commit`
+
+- 客户端先发送一个或多个 `input_text_buffer.append`；
+- 仅当发送 `input_text_buffer.commit` 后，才正式触发音频生成；
+- 适用于需要业务侧精细控制语音节奏的场景。
+
+## 7. 与内部 runtime 的映射关系
+
+| 对外兼容事件 | 内部语义 |
+| --- | --- |
+| `session.update` | 创建/更新 session 配置，解析 `model` 与 `voice` 到 bundle / speaker profile |
+| `input_text_buffer.append` | `runtime.append_text(...)` |
+| `input_text_buffer.commit` | `runtime.commit()` |
+| `input_text_buffer.clear` | `runtime.clear_pending_text()` |
+| `session.finish` | `runtime.finish()` |
+| `response.audio.delta` | `incremental_decoder` 输出的新增音频字节经 Base64 编码 |
+
+也就是说：
+
+- **公开接口看起来像官方；**
+- **内部仍然是我们自己的 LoRA + session + decoder 实现。**
+
+## 8. 推荐时序
+
+### 8.1 `server_commit` 正常流程
 
 ```text
-client -> session.start
-server -> session.ready
-client -> text.delta
-client -> text.delta
-server -> audio.chunk.meta
-server -> <binary pcm>
-client -> text.flush
-server -> audio.chunk.meta
-server -> <binary pcm>
-client -> session.stop
-server -> session.completed
+client -> session.update
+server -> session.created
+server -> session.updated
+client -> input_text_buffer.append
+client -> input_text_buffer.append
+server -> response.created
+server -> response.output_item.added
+server -> response.content_part.added
+server -> response.audio.delta
+server -> response.audio.delta
+client -> session.finish
+server -> response.audio.done
+server -> response.content_part.done
+server -> response.output_item.done
+server -> response.done
+server -> session.finished
 ```
 
-### 6.2 取消流程
+### 8.2 `commit` 正常流程
 
 ```text
-client -> session.start
-server -> session.ready
-client -> text.delta
-server -> audio.chunk.meta
-server -> <binary pcm>
-client -> session.cancel
-server -> session.cancelled
+client -> session.update
+server -> session.created
+server -> session.updated
+client -> input_text_buffer.append
+client -> input_text_buffer.append
+client -> input_text_buffer.commit
+server -> input_text_buffer.committed
+server -> response.created
+server -> response.audio.delta
+server -> response.done
+client -> session.finish
+server -> session.finished
 ```
 
-## 7. 服务端策略建议
-
-### 7.1 文本提交策略
-
-服务端不要盲目把每个 `text.delta` 都原样立即喂给模型，应维护：
-
-- `raw_text_buffer`
-- `committed_text`
-- `pending_text_tail`
-
-推荐策略：
-
-- 标点优先提交
-- 英文按空格/单词边界提交
-- 中文允许更细粒度提交
-- `flush` 时强制提交尾部
-
-### 7.2 chunk 下发策略
-
-建议：
-
-- 至少积累 `chunk_steps >= 4`
-- 或收到 `flush`
-- 或检测到 eos
-
-再执行一次增量 decode 并下发。
-
-## 8. V1 协议边界
+## 9. V1 边界
 
 V1 不建议支持：
 
-- 一条连接内切换 speaker
-- 一条连接内切换 bundle
-- 上行音频参考流
-- 多模态输入
+- 在同一连接内切换 bundle；
+- 在同一连接内切换 voice profile；
+- 上行参考音频流；
+- 多模态输入；
+- 公开暴露 `bundle_dir`、`adapter_dir` 等部署参数。
 
-## 9. 前端对接建议
+## 10. 公开协议废弃项
 
-浏览器侧建议：
+下列旧事件不再作为公开协议继续扩展：
 
-- JSON 帧用来解析控制信息；
-- 二进制 PCM chunk 进入播放缓冲；
-- 建议客户端自己维护 `seq` 连续性检查；
-- 出现断序时可记录错误但不中断整条连接。
+- `session.start`
+- `text.delta`
+- `text.flush`
+- `session.stop`
+- `session.cancel`
+- `audio.chunk.meta`
+
+如果未来保留这些能力，应当：
+
+- 只作为内部/native 协议；
+- 或在兼容层内转译为官方风格事件；
+- 不再作为面向第三方的主文档标准。

@@ -5,11 +5,16 @@
 建议采用下面的分层：
 
 ```text
-Client
-  ↕ WebSocket
-Streaming Server
-  ├─ Session Manager
+Client / SDK
+  ↕ Qwen-compatible payloads & events
+Public API Layer
+  ├─ Realtime WebSocket Adapter
+  └─ HTTP TTS Adapter (shared contract)
+       ↓
+Service Core
+  ├─ Voice Registry
   ├─ Bundle Loader
+  ├─ Session Manager
   ├─ Prompt Builder
   ├─ Step Generator
   ├─ Incremental Decoder
@@ -18,9 +23,50 @@ Streaming Server
 Qwen3-TTS Base + LoRA Adapter + Speaker Patch
 ```
 
+这张图的关键含义是：
+
+- **公开协议层**负责“长得像官方”；
+- **服务核心层**负责“内部跑得通、跑得稳”；
+- **LoRA 装配**属于服务核心，而不是公开 API 心智。
+
 ## 2. 组件职责
 
-### 2.1 Bundle Loader
+### 2.1 Public API Layer
+
+职责：
+
+- 接收官方风格字段与事件；
+- 校验输入是否符合公开契约；
+- 把公开语义翻译为内部 runtime 调用；
+- 把内部增量音频翻译为 `response.audio.delta` 等官方风格输出。
+
+建议拆为：
+
+- `Realtime WebSocket Adapter`
+- `HTTP TTS Adapter`
+
+其中 Realtime 为当前目录的核心优先级。
+
+### 2.2 Voice Registry
+
+负责把对外公开的：
+
+- `model`
+- `voice`
+
+映射到服务内部的：
+
+- 默认 bundle
+- speaker profile
+- 模型能力标签
+
+关键原则：
+
+- 对外 `voice` 不直接等于内部文件名；
+- registry 是公开别名层；
+- LoRA bundle 细节不向普通客户端暴露。
+
+### 2.3 Bundle Loader
 
 负责从 LoRA bundle 恢复一个可推理的 `custom_voice` 模型实例。
 
@@ -39,18 +85,19 @@ Qwen3-TTS Base + LoRA Adapter + Speaker Patch
 - `apply_config_patch(...)`
 - `apply_speaker_patch(...)`
 
-### 2.2 Session Manager
+### 2.4 Session Manager
 
 负责：
 
-- 创建/销毁会话
-- 限制最大并发会话数
-- 为每个会话分配状态容器
-- 响应 `cancel` / `stop`
+- 创建/销毁 session；
+- 限制最大并发 session 数；
+- 为每个 session 分配状态容器；
+- 响应 `finish` 与内部中断逻辑；
+- 维护 `server_commit` / `commit` 的行为差异。
 
-### 2.3 Prompt Builder
+### 2.5 Prompt Builder
 
-负责把外部请求转换成模型 prefill 所需的输入结构：
+负责把公开请求转换成模型 prefill 所需的输入结构：
 
 - `input_ids`
 - `instruct_ids`
@@ -62,9 +109,10 @@ Qwen3-TTS Base + LoRA Adapter + Speaker Patch
 关键原则：
 
 - 不重复发明 prompt 规则；
-- 尽量复用 `Qwen3TTSForConditionalGeneration.generate(...)` 里已有的 prompt 组装逻辑。
+- 尽量复用 `Qwen3TTSForConditionalGeneration.generate(...)` 里已有逻辑；
+- 公开 `model` / `voice` 的解释在 registry 层完成，而不是散落在 prompt builder 中。
 
-### 2.4 Step Generator
+### 2.6 Step Generator
 
 负责逐步推进生成，而不是一次性 `generate()` 完整序列。
 
@@ -80,29 +128,30 @@ Qwen3-TTS Base + LoRA Adapter + Speaker Patch
 
 每次 step 的目标产物：
 
-- 新增一帧完整 codec group
-- 更新后的 generation state
-- 是否遇到 eos
+- 新增一帧完整 codec group；
+- 更新后的 generation state；
+- 是否遇到 eos。
 
-### 2.5 Incremental Decoder
+### 2.7 Incremental Decoder
 
 负责把“已生成 codec 序列”转成“尚未发给客户端的新增音频”。
 
 设计要求：
 
-- 维护 codec ring buffer
-- 保留左上下文
-- 避免每次从头全量 decode
-- 最终输出 PCM16 little-endian
+- 维护 codec ring buffer；
+- 保留左上下文；
+- 避免每次从头全量 decode；
+- 输出原始音频字节；
+- 由公开协议层编码成 Base64 `delta`。
 
-### 2.6 WebSocket Transport
+### 2.8 Metrics / Logging
 
 职责：
 
-- 接收控制信令 JSON
-- 下发二进制音频 chunk
-- 保持 session 生命周期
-- 给出错误与完成状态
+- 记录 TTFB；
+- 记录总 step 数与 chunk 数；
+- 区分 `server_commit` / `commit` 模式；
+- 为后续压测与质量比较提供基础日志。
 
 ## 3. 关键数据流
 
@@ -117,62 +166,71 @@ bundle_dir
   -> speaker_embedding.safetensors
   -> Bundle Loader
   -> Qwen3TTSModel (常驻)
+  -> Voice Registry
+  -> public model / voice aliases ready
 ```
+
+关键点：
+
+- LoRA 默认挂载发生在**服务启动期**；
+- 普通第三方调用不需要知道这些细节。
 
 ### 3.2 会话建立
 
 ```text
-session.start
-  -> 创建 Session State
-  -> 记录 speaker / language / defaults
-  -> 返回 session.ready
+session.update
+  -> Public API Layer
+  -> resolve public model / voice
+  -> create Session State
+  -> return session.created / session.updated
 ```
 
 ### 3.3 文本增量输入
 
 ```text
-text.delta
+input_text_buffer.append
   -> raw_text_buffer 追加
-  -> tokenizer / commit policy 计算稳定前缀
-  -> 新的 trailing text hidden
-  -> step generator 推进若干步
+  -> if server_commit: commit policy 计算稳定前缀
+  -> Prompt Builder / Step Generator 推进若干步
   -> codec buffer 增长
-  -> incremental decoder 产出 PCM chunk
-  -> audio.chunk 下发
+  -> Incremental Decoder 产出新增音频字节
+  -> Public API Layer 编码为 response.audio.delta
+  -> 下发给客户端
 ```
 
-### 3.4 flush
+### 3.4 commit
 
 ```text
-flush
-  -> 强制提交未稳定文本尾部
-  -> 继续 step 直到阶段性收敛或 eos
-  -> 发送剩余音频块
+input_text_buffer.commit
+  -> 将当前缓冲文本提交给 runtime
+  -> 返回 input_text_buffer.committed
+  -> 触发 response.created
+  -> 逐批下发 response.audio.delta
 ```
 
-### 3.5 stop / cancel
+### 3.5 finish
 
 ```text
-stop
-  -> 尽量输出已生成且尚未发送的音频
-  -> session.completed
-
-cancel
-  -> 立即终止会话
-  -> 丢弃未发音频
-  -> session.cancelled
+session.finish
+  -> 尽量生成并发送剩余音频
+  -> response.audio.done
+  -> response.done
+  -> session.finished
 ```
 
 ## 4. 模型状态设计建议
 
-### 4.1 StreamingSession
+### 4.1 `StreamingSession` / `RuntimeSession`
 
 建议定义类似对象：
 
 - `session_id`
+- `public_model_alias`
+- `public_voice_alias`
 - `speaker_name`
-- `language`
-- `instruct`
+- `language_type`
+- `instructions`
+- `mode`
 - `raw_text_buffer`
 - `committed_text`
 - `pending_text_tail`
@@ -184,37 +242,41 @@ cancel
 - `generated_codes`
 - `decoded_until_step`
 - `finished`
-- `cancelled`
 
-### 4.2 为什么需要 `committed_text` 与 `pending_text_tail`
+### 4.2 为什么同时需要公开别名与内部 speaker 信息
 
-因为输入是增量文本，而 tokenizer 不是天然字符级稳定的。
+因为：
 
-推荐模式：
-
-- `committed_text`：已确认喂入模型的稳定前缀
-- `pending_text_tail`：尚未稳定提交的尾部
-
-这样可减小重新 tokenize 导致的边界抖动。
+- 客户端认知的是 `voice="yachiyo_formal"`；
+- 模型推理真正需要的是内部 `speaker_name` / profile；
+- 二者之间需要 registry 进行稳定映射。
 
 ## 5. LoRA 相关架构要求
 
 ### 5.1 模型层只加载一次 LoRA
 
-不要每个会话重复：
+不要每个 session 重复：
 
 - `load_lora_adapter(...)`
 - `apply_speaker_patch(...)`
 
 这两个动作应在服务启动时完成。
 
-### 5.2 speaker patch 属于模型静态配置的一部分
+### 5.2 speaker patch 属于模型静态配置
 
-当前 bundle 的 `speaker_embedding.safetensors` 和 `config_patch.json` 本质上是：
+当前 bundle 的 `speaker_embedding.safetensors` 与 `config_patch.json` 本质上是：
 
-- 把 base 模型暂时改造成 custom voice 模型
+- 把 base 模型改造成当前服务默认的 custom voice runtime。
 
-因此流式服务不应在运行期频繁切换 speaker patch，除非未来引入多 bundle registry。
+因此 V1 不应在公开协议中要求客户端理解这层配置。
+
+### 5.3 voice routing 应优先在 registry 层做，而不是会话里临时拼装
+
+这样可以确保：
+
+- 对外 voice 命名稳定；
+- 后续更换 bundle 时文档与客户端改动更小；
+- speaker patch / profile 变更不会直接污染公开 API。
 
 ## 6. 并发模型建议
 
@@ -222,12 +284,13 @@ V1 建议：
 
 - **单模型实例**
 - **单 GPU 串行 step** 或受控轮询 step
-- **多会话接入，但实际生成排队**
+- **多 session 接入，但实际生成排队**
 
 原因：
 
 - 增量生成过程对 cache / GPU memory 很敏感；
-- Windows + 单卡环境更适合先做稳态串行。
+- Windows + 单卡环境更适合先做稳态串行；
+- 第一阶段目标是把公开契约和流式质量先做稳，不是先卷并发数字。
 
 ## 7. 编码/解码粒度建议
 
@@ -261,19 +324,29 @@ $$
 
 - TTFB（首包时间）
 - 总生成 step 数
-- 总音频 chunk 数
-- 每 chunk 平均样本数
-- flush 次数
-- cancel 次数
-- eos 结束 / 手动 stop 结束
+- 总音频 delta 数
+- 每 delta 平均字节数
+- commit 次数
+- `server_commit` / `commit` 模式占比
+- eos 结束 / 手动 finish 结束
 
 ## 9. 未来扩展点
 
-### 9.1 Voice Design
+### 9.1 HTTP 兼容层
 
-相对容易扩展，只需增加 instruction prompt 管理。
+与当前目录共享：
 
-### 9.2 Voice Clone
+- `voice_registry`
+- `bundle_loader`
+- 默认 LoRA 装配
+
+这样可以避免 HTTP 和 Realtime 使用两套完全不同的 `voice` / `model` 语义。
+
+### 9.2 Voice Design
+
+相对容易扩展，只需增加 instruction prompt 管理与 profile 路由。
+
+### 9.3 Voice Clone
 
 复杂度明显更高，因为需要会话中维护：
 
@@ -284,11 +357,9 @@ $$
 
 不建议在 V1 直接实现。
 
-### 9.3 多 bundle / 多 speaker registry
+### 9.4 Native/Internal Protocol
 
-后续可考虑：
+如果未来仍需要更低开销的二进制 PCM 通道：
 
-- 启动时加载多个 bundle
-- 通过 `voice_id` 路由到不同 session profile
-
-这属于 V2+ 能力。
+- 可单独定义 internal/native 协议；
+- 但不应取代当前 Qwen-compatible 公开协议。

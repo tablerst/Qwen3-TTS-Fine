@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable
+
+from .models import DecodePlan
+
+
+class IncrementalDecoderError(RuntimeError):
+    """Raised when decoder state becomes inconsistent."""
+
+
+@dataclass(frozen=True)
+class IncrementalDecoderConfig:
+    chunk_steps: int = 4
+    left_context_steps: int = 25
+
+    def __post_init__(self) -> None:
+        if self.chunk_steps <= 0:
+            raise ValueError("chunk_steps must be > 0")
+        if self.left_context_steps < 0:
+            raise ValueError("left_context_steps must be >= 0")
+
+
+class IncrementalAudioDecoder:
+    def __init__(self, config: IncrementalDecoderConfig | None = None) -> None:
+        self.config = config or IncrementalDecoderConfig()
+        self.emitted_until_step = 0
+
+    def plan(self, total_steps: int, *, force: bool = False, finished: bool = False) -> DecodePlan | None:
+        if total_steps < self.emitted_until_step:
+            raise IncrementalDecoderError(
+                f"total_steps {total_steps} cannot be smaller than emitted_until_step {self.emitted_until_step}"
+            )
+        new_steps = total_steps - self.emitted_until_step
+        if new_steps == 0:
+            return None
+        if not force and not finished and new_steps < self.config.chunk_steps:
+            return None
+
+        start_step = max(0, self.emitted_until_step - self.config.left_context_steps)
+        return DecodePlan(
+            start_step=start_step,
+            end_step=total_steps,
+            emit_from_step=self.emitted_until_step,
+        )
+
+    def decode(
+        self,
+        total_steps: int,
+        *,
+        decode_fn: Callable[[int, int], bytes],
+        bytes_per_step: int,
+        force: bool = False,
+        finished: bool = False,
+    ) -> bytes | None:
+        if bytes_per_step <= 0:
+            raise ValueError("bytes_per_step must be > 0")
+
+        plan = self.plan(total_steps, force=force, finished=finished)
+        if plan is None:
+            return None
+
+        decoded = decode_fn(plan.start_step, plan.end_step)
+        overlap_steps = plan.emit_from_step - plan.start_step
+        overlap_bytes = overlap_steps * bytes_per_step
+        if len(decoded) < overlap_bytes:
+            raise IncrementalDecoderError(
+                f"Decoded audio is shorter than the overlap window: {len(decoded)} < {overlap_bytes}"
+            )
+
+        self.emitted_until_step = plan.end_step
+        return decoded[overlap_bytes:]

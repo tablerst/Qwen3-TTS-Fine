@@ -1,0 +1,13 @@
+{
+  "default_voice": "yachiyo_formal",
+  "voices": {
+    "yachiyo_formal": {
+      "speaker_name": "inference_speaker",
+      "supported_models": [
+        "qwen3-tts-flash-realtime"
+      ],
+      "language_type": "Auto",
+      "description": "Default voice mapped to the loaded LoRA bundle speaker"
+    }
+  }
+}
