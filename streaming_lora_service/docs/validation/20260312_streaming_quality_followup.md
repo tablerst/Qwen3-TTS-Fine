@@ -73,6 +73,38 @@ qwen-tts-streaming-validate --bundle_dir outputs/lora_formal_single_speaker_1p7b
 
 它**并不意味着**真实 bundle 的“重复词 / 过生成 / 严重拉长”已经解决。
 
+## 新增实证：固定种子后的三路对照结果
+
+本次已用新工具实际跑出一份固定种子报告：
+
+- `docs/validation/20260312_compare_seeded/metrics.json`
+
+关键观察：
+
+1. `offline_non_streaming` 与 `http_non_streaming` 时长接近
+  - 中文约 `8.0s` vs `7.76s`
+  - 日文约 `6.24s` vs `6.56s`
+2. `http_streaming_runtime` 与 `websocket_realtime` 在固定种子下完全对齐
+  - 中文均为 `27.84s`
+  - 日文均为 `22.08s`
+  - `generated_steps` 也一致
+3. 两条流式路径都显著长于离线/HTTP 非流式
+  - 中文时长比约 `3.48x`
+  - 日文时长比约 `3.54x`
+4. 两条流式路径虽然最终 `finish_reason = eos`，但 `generated_steps` 仍远高于 HTTP 非流式 `codec_steps`
+  - 中文约 `3.59x`
+  - 日文约 `3.37x`
+
+这说明一个非常关键的结论：
+
+> 当前异常已经基本定位到 **step-level 流式生成链路本身**，而不是 WebSocket 包装层、Base64 delta 协议层，或单纯的播放器解码错误。
+
+更具体地说：
+
+- 问题发生在“生成出了过多 codec step”这一步；
+- 不是增量解码后才把正常音频重复裁出来；
+- 也不是 WS 事件包装把音频块拼坏了。
+
 ### 3. 跨 `append/commit` 的真正 continuation 仍是后续项
 
 当前 runtime session 的状态复用仍偏向：
@@ -88,6 +120,7 @@ qwen-tts-streaming-validate --bundle_dir outputs/lora_formal_single_speaker_1p7b
 ## 建议下一步
 
 1. 用同一 bundle、同一文本做离线 / HTTP 非流式 / WebSocket 拼接音频三路对比
-2. 记录真实 bundle 的 `generated_steps`、`finish_reason`、总字节数和时长
-3. 把“短文本最长时长阈值”做成可选的真实 bundle 回归测试
-4. 在继续推进 cross-append/commit continuation 前，先把当前真实流式 stop 行为定位清楚
+2. 继续对照 `StreamingCustomVoiceGenerator` 与 `model.generate(...)` 的 prompt/prefill/step 推进差异
+3. 重点检查为什么流式路径在 `finish_reason = eos` 的前提下仍会多生成约 `3.3x ~ 3.6x` codec step
+4. 把“短文本最长时长阈值”做成可选的真实 bundle 回归测试
+5. 在继续推进 cross-append/commit continuation 前，先把当前真实流式 stop 行为定位清楚

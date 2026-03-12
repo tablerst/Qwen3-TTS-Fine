@@ -86,6 +86,14 @@ JSON 格式示例：
 --max_stream_to_offline_ratio 1.5
 ```
 
+默认还会使用：
+
+```text
+--seed 1234
+```
+
+这样同一条 case 在离线 / HTTP / WebSocket 三条路径上的比较会更稳定，尽量减少采样随机性带来的噪声。
+
 如果你现在正在排查“短文本被拉到几十秒”，建议先不要把阈值放太宽；工具就是来负责吹哨的，不是来安慰数据的。
 
 ## 5. 当前建议排查顺序
@@ -98,7 +106,26 @@ JSON 格式示例：
    - `generated_steps`
    - `delta_chunks`
 
-## 6. 当前已知限制
+## 6. 2026-03-12 当前观察到的结论
+
+基于 `docs/validation/20260312_compare_seeded/metrics.json`：
+
+- `http_streaming_runtime` 与 `websocket_realtime` 在固定种子下已经对齐
+- 但它们都比离线 / HTTP 非流式长约 `3.5x`
+- 且 `generated_steps` 相对 HTTP 非流式 `codec_steps` 高约 `3.37x ~ 3.59x`
+- 同时 `finish_reason` 仍然是 `eos`
+
+因此当前更像是：
+
+- **流式 step-level 生成链路本身生成了过多 codec step**
+
+而不是：
+
+- WebSocket 封装层把音频块弄坏
+- Base64 `response.audio.delta` 拼接错误
+- 单纯播放器把 24k PCM16 解错
+
+## 7. 当前已知限制
 
 - 该工具用于**质量对照与回归**，不是公开 API 的一部分
 - 当前仍不能替代人工试听

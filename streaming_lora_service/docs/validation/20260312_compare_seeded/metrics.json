@@ -12,7 +12,7 @@
   },
   "summary": {
     "case_count": 2,
-    "warning_count": 4,
+    "warning_count": 8,
     "warning_case_count": 2,
     "case_ids_with_warnings": [
       "zh_formal",
@@ -34,7 +34,7 @@
         "channels": 1,
         "total_audio_bytes": 384000,
         "duration_s": 8.0,
-        "elapsed_ms": 27758.41,
+        "elapsed_ms": 33284.24,
         "ttfb_ms": null,
         "delta_chunks": null,
         "generated_steps": null,
@@ -50,7 +50,7 @@
         "channels": 1,
         "total_audio_bytes": 372480,
         "duration_s": 7.76,
-        "elapsed_ms": 27928.52,
+        "elapsed_ms": 30505.41,
         "ttfb_ms": null,
         "delta_chunks": null,
         "generated_steps": null,
@@ -66,8 +66,8 @@
         "channels": 1,
         "total_audio_bytes": 1336320,
         "duration_s": 27.84,
-        "elapsed_ms": 95979.63,
-        "ttfb_ms": 1128.17,
+        "elapsed_ms": 93354.07,
+        "ttfb_ms": 1246.23,
         "delta_chunks": 87,
         "generated_steps": 348,
         "emitted_chunks": 87,
@@ -82,8 +82,8 @@
         "channels": 1,
         "total_audio_bytes": 1336320,
         "duration_s": 27.84,
-        "elapsed_ms": 109472.49,
-        "ttfb_ms": 1232.37,
+        "elapsed_ms": 88809.05,
+        "ttfb_ms": 1082.12,
         "delta_chunks": 87,
         "generated_steps": 348,
         "emitted_chunks": 87,
@@ -94,7 +94,9 @@
       },
       "warnings": [
         "http_streaming_runtime: duration ratio vs offline is 3.48 (> 1.50)",
-        "websocket_realtime: duration ratio vs offline is 3.48 (> 1.50)"
+        "http_streaming_runtime: generated_steps ratio vs http_non_streaming.codec_steps is 3.59 (> 1.50)",
+        "websocket_realtime: duration ratio vs offline is 3.48 (> 1.50)",
+        "websocket_realtime: generated_steps ratio vs http_non_streaming.codec_steps is 3.59 (> 1.50)"
       ]
     },
     {
@@ -111,7 +113,7 @@
         "channels": 1,
         "total_audio_bytes": 299520,
         "duration_s": 6.24,
-        "elapsed_ms": 22030.44,
+        "elapsed_ms": 19217.96,
         "ttfb_ms": null,
         "delta_chunks": null,
         "generated_steps": null,
@@ -127,7 +129,7 @@
         "channels": 1,
         "total_audio_bytes": 314880,
         "duration_s": 6.56,
-        "elapsed_ms": 28177.91,
+        "elapsed_ms": 20412.62,
         "ttfb_ms": null,
         "delta_chunks": null,
         "generated_steps": null,
@@ -143,8 +145,8 @@
         "channels": 1,
         "total_audio_bytes": 1059840,
         "duration_s": 22.08,
-        "elapsed_ms": 81559.62,
-        "ttfb_ms": 1329.31,
+        "elapsed_ms": 68717.45,
+        "ttfb_ms": 1016.72,
         "delta_chunks": 69,
         "generated_steps": 276,
         "emitted_chunks": 69,
@@ -159,8 +161,8 @@
         "channels": 1,
         "total_audio_bytes": 1059840,
         "duration_s": 22.08,
-        "elapsed_ms": 80113.97,
-        "ttfb_ms": 1157.34,
+        "elapsed_ms": 68293.67,
+        "ttfb_ms": 1001.27,
         "delta_chunks": 69,
         "generated_steps": 276,
         "emitted_chunks": 69,
@@ -171,7 +173,9 @@
       },
       "warnings": [
         "http_streaming_runtime: duration ratio vs offline is 3.54 (> 1.50)",
-        "websocket_realtime: duration ratio vs offline is 3.54 (> 1.50)"
+        "http_streaming_runtime: generated_steps ratio vs http_non_streaming.codec_steps is 3.37 (> 1.50)",
+        "websocket_realtime: duration ratio vs offline is 3.54 (> 1.50)",
+        "websocket_realtime: generated_steps ratio vs http_non_streaming.codec_steps is 3.37 (> 1.50)"
       ]
     }
   ]
