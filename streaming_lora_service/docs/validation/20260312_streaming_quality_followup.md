@@ -141,6 +141,49 @@ qwen-tts-streaming-validate --bundle_dir outputs/lora_formal_single_speaker_1p7b
 
 > 本次“短文本被拉长、重复词、严重过生成”的主根因已经得到修复。
 
+## 关于 `offline_non_streaming` 听感仍略有差别的说明
+
+这不是你耳朵在“找 bug”，而是当前代码路径里确实存在一个**有意保留的模式差异**：
+
+- `offline_non_streaming`
+  - 走的是 `qwen3tts.generate_custom_voice(..., non_streaming_mode=True)`
+- 服务当前的 `http_non_streaming` / `http_streaming_runtime` / `websocket_realtime`
+  - 统一走 `generate_custom_voice_step_aware(...)`
+  - 当前服务基线更接近 `non_streaming_mode=False` 的 streaming-compatible prompt 语义
+
+已在固定种子下验证：
+
+- `offline wrapper == step-aware + non_streaming_mode=True`
+- 但它**不等于**当前服务对齐后的 `http_non_streaming`
+
+这能解释你在中文场景里听到的那一点点差异。
+
+因此后续要先做一个产品决定：
+
+1. **优先服务端三条路径完全一致**
+   - 维持当前状态
+   - HTTP 非流式 / HTTP 流式 / WebSocket Realtime 完全对齐
+2. **优先服务 HTTP 非流式 与离线 SDK 一致**
+   - 则需要把 HTTP 非流式改成 `non_streaming_mode=True`
+   - 但这样它会重新与 streaming / realtime 出现模式差异
+
+当前更推荐方案 1，因为它更适合对外服务的一致性。
+
+## 当前服务候选主线选择
+
+结合最新服务验证结果，当前更推荐把：
+
+- `outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best`
+
+作为 **当前服务候选主线 bundle**。
+
+依据：
+
+- `docs/validation/20260312_candidate8_v2_service_validation/metrics.json`
+- `warning_count = 0`
+- 中日文默认回归 case 均通过
+- 流式 / Realtime 路径稳定
+
 剩余工作更偏向：
 
 - 继续扩大真实 bundle 回归样本

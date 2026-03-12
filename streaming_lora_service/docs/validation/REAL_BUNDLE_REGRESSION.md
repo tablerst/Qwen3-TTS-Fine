@@ -143,6 +143,23 @@ JSON 格式示例：
 
 因此目前推荐把 `20260312_compare_fix1` 作为后续继续改 streaming 路径时的回归基线。
 
+### 6.2 为什么 `offline_non_streaming` 仍可能和服务版听感略有不同
+
+当前工具里的 `offline_non_streaming` 是“离线 SDK 原生语义”基线：
+
+- `qwen3tts.generate_custom_voice(..., non_streaming_mode=True)`
+
+而当前服务三条路径的统一基线更接近：
+
+- `generate_custom_voice_step_aware(..., non_streaming_mode=False)`
+
+这意味着：
+
+- `offline_non_streaming` 更像“离线原生模式”
+- `http_non_streaming / http_streaming_runtime / websocket_realtime` 更像“服务统一模式”
+
+所以如果你听到 `offline_non_streaming` 和服务版还有细微差异，尤其在中文场景，不必第一时间把它当成 regression；先确认是不是这个模式差异带来的正常现象。
+
 ## 7. 当前已知限制
 
 - 该工具用于**质量对照与回归**，不是公开 API 的一部分

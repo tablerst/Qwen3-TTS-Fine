@@ -6,10 +6,10 @@
 
 建议联调时使用下面这组服务参数：
 
-- `bundle_dir`: `outputs/lora_formal_single_speaker_1p7b_timbre_transfer_20260310_bundle_best_refcand8`
-- `voice_registry_file`: `streaming_lora_service/configs/voice_registry.example.json`
+- `bundle_dir`: `outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best`
+- `voice_registry_file`: `streaming_lora_service/configs/voice_registry.candidate8_v2.json`
 - `public_model_alias`: `qwen3-tts-flash-realtime`
-- `default_voice_alias`: `yachiyo_formal`
+- `default_voice_alias`: `yachiyo_candidate8_v2`
 - `host`: `0.0.0.0`
 - `port`: `9010`
 
@@ -46,11 +46,16 @@
 
 - `model`: 公开模型别名，当前使用 `qwen3-tts-flash-realtime`
 - `text`: 待合成文本
-- `voice`: 公开音色别名，当前示例使用 `yachiyo_formal`
+- `voice`: 公开音色别名，当前示例使用 `yachiyo_candidate8_v2`
 - `language_type`: `Auto` / `Chinese` / `Japanese` 等
 - `instructions`: 风格指令
 - `optimize_instructions`: 当前已接字段，默认 `false`
 - `stream`: 是否启用流式输出
+
+说明：
+
+- 当前候选主线 alias：`yachiyo_candidate8_v2`
+- 为兼容历史调用，`voice_registry.candidate8_v2.json` 仍保留 `yachiyo_formal` 别名指向同一个 speaker
 
 推荐联调请求体：
 
@@ -58,7 +63,7 @@
 {
   "model": "qwen3-tts-flash-realtime",
   "text": "你好，欢迎使用实时语音服务。",
-  "voice": "yachiyo_formal",
+  "voice": "yachiyo_candidate8_v2",
   "language_type": "Chinese",
   "instructions": "正式，平静，清晰。",
   "optimize_instructions": false,
@@ -76,7 +81,7 @@ curl -X POST "http://127.0.0.1:9010/v1/tts" \
   -d '{
     "model": "qwen3-tts-flash-realtime",
     "text": "你好，欢迎使用实时语音服务。",
-    "voice": "yachiyo_formal",
+    "voice": "yachiyo_candidate8_v2",
     "language_type": "Chinese",
     "instructions": "正式，平静，清晰。",
     "optimize_instructions": false,
@@ -92,7 +97,7 @@ import requests
 payload = {
     "model": "qwen3-tts-flash-realtime",
     "text": "你好，欢迎使用 HTTP 接口。",
-    "voice": "yachiyo_formal",
+  "voice": "yachiyo_candidate8_v2",
     "language_type": "Chinese",
     "instructions": "正式，平静，清晰。",
     "optimize_instructions": False,
@@ -151,7 +156,7 @@ curl -N -X POST "http://127.0.0.1:9010/v1/tts" \
   -d '{
     "model": "qwen3-tts-flash-realtime",
     "text": "你好，这是一次流式语音输出测试。",
-    "voice": "yachiyo_formal",
+    "voice": "yachiyo_candidate8_v2",
     "language_type": "Chinese",
     "instructions": "正式，平静，清晰。",
     "optimize_instructions": false,
@@ -169,7 +174,7 @@ import requests
 payload = {
     "model": "qwen3-tts-flash-realtime",
     "text": "你好，这是流式返回测试。",
-    "voice": "yachiyo_formal",
+  "voice": "yachiyo_candidate8_v2",
     "language_type": "Chinese",
     "instructions": "正式，平静，清晰。",
     "optimize_instructions": False,
@@ -231,7 +236,7 @@ async def main():
             "type": "session.update",
             "session": {
                 "model": "qwen3-tts-flash-realtime",
-                "voice": "yachiyo_formal",
+              "voice": "yachiyo_candidate8_v2",
                 "language_type": "Chinese",
                 "mode": "commit",
                 "response_format": "pcm",
@@ -272,7 +277,7 @@ asyncio.run(main())
   "type": "session.update",
   "session": {
     "model": "qwen3-tts-flash-realtime",
-    "voice": "yachiyo_formal",
+    "voice": "yachiyo_candidate8_v2",
     "language_type": "Chinese",
     "mode": "commit",
     "response_format": "pcm",
@@ -296,6 +301,7 @@ asyncio.run(main())
 ## 8. 当前已知注意事项
 
 - 当前服务默认返回单声道 `24000 Hz` 音频
+- 当前候选主线 bundle 已切换到 `candidate8 v2`；推荐优先使用 `voice_registry.candidate8_v2.json`
 - WebSocket `session.update` 当前只接受 `response_format="pcm"` 与 `sample_rate=24000`；传其他值会直接返回 `error`
 - 流式中间块是 Base64 编码的 PCM16 音频片段，不是每块都带 WAV 文件头
 - HTTP `stream=true` 的中间 PCM 片段与最后 `audio.url` 下载到的 WAV 属于同一份音频内容；如需试听，优先下载最终 WAV

@@ -88,7 +88,8 @@ V1 的兼容范围定义为：
 
 推荐通过 `voice_registry` 做别名映射，例如：
 
-- `yachiyo_formal`
+- `yachiyo_candidate8_v2`
+- `yachiyo_formal`（兼容别名）
 - `yachiyo_timbre_transfer`
 - `default_female_cn`
 
@@ -180,13 +181,21 @@ V1 的主公开接口为 Realtime WebSocket。
 {
   "model": "qwen3-tts-flash-realtime",
   "text": "你好，欢迎体验 HTTP 兼容接口。",
-  "voice": "yachiyo_formal",
+  "voice": "yachiyo_candidate8_v2",
   "language_type": "Chinese",
   "instructions": "",
   "optimize_instructions": false,
   "stream": false
 }
 ```
+
+当前更推荐的服务候选主线 bundle 是：
+
+- `outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best`
+
+建议配套使用：
+
+- `streaming_lora_service/configs/voice_registry.candidate8_v2.json`
 
 ### 6.2 HTTP 非流式响应示例
 

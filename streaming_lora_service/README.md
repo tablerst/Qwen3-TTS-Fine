@@ -151,6 +151,31 @@ V1 暂不追求：
 - 试听样本：`docs/validation/20260311_real_bundle/sample_01_zh_formal.wav`
 - 试听样本：`docs/validation/20260311_real_bundle/sample_02_ja_formal.wav`
 
+## 当前服务候选主线 bundle（2026-03-12）
+
+当前更推荐作为**服务候选主线**的 bundle 是：
+
+- `outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best`
+
+对应验证产物：
+
+- `docs/validation/20260312_candidate8_v2_service_validation/metrics.json`
+
+当前结论：
+
+- HTTP streaming / WebSocket Realtime 已通过基础服务验证
+- 中日文默认回归 case `warning_count = 0`
+- 更适合作为当前多语服务候选方向
+
+推荐搭配的 voice registry：
+
+- `streaming_lora_service/configs/voice_registry.candidate8_v2.json`
+
+其中：
+
+- 规范 alias：`yachiyo_candidate8_v2`
+- 兼容 alias：`yachiyo_formal`
+
 ## 当前 MVP 能力边界
 
 当前已经完成的是一个**可运行的兼容层 MVP**：
@@ -209,7 +234,7 @@ python -m streaming_lora_service.app.server --bundle_dir <path_to_bundle>
 常见参数示例：
 
 ```text
-python -m streaming_lora_service.app.server --bundle_dir outputs/lora_formal_single_speaker_1p7b_timbre_transfer_20260310_bundle_best_refcand8 --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_formal --voice_registry_file streaming_lora_service/configs/voice_registry.example.json --host 0.0.0.0 --port 9010 --local_files_only
+python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_candidate8_v2 --voice_registry_file streaming_lora_service/configs/voice_registry.candidate8_v2.json --host 0.0.0.0 --port 9010 --local_files_only
 ```
 
 说明：
@@ -235,6 +260,8 @@ python -m streaming_lora_service.app.server --bundle_dir outputs/lora_formal_sin
 1. 把“已绑定的会话状态”继续推进到真正跨 append/commit 的增量 continuation 复用
 2. 增加默认 bundle 的人工试听结论与主观质量记录
 3. 继续补真实 bundle 的端到端回归样本与指标基线
+
+如果当前目标是“对外服务先稳定跑起来”，优先建议围绕 `candidate8 v2` 继续扩展样本和试听结论，而不是回到旧的单语 refcand8 版本重新做服务口径。
 
 ## 新增：质量回归对照工具
 
