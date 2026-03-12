@@ -66,7 +66,8 @@ V1 不要求：
 - `model` / `voice` 为对外公开标识，而不是内部文件路径；
 - 服务端可将其映射到默认 LoRA bundle 与目标 speaker；
 - 常规第三方调用不需要知道 `bundle_dir`；
-- V1 推荐默认 `response_format=pcm`、`sample_rate=24000`。
+- 当前 WebSocket Realtime V1 **仅支持** `response_format=pcm`、`sample_rate=24000`；
+- 若客户端提交其他值，服务端会直接返回 `error`，避免出现“会话看起来更新成功，但实际下行音频仍是 24k PCM16”的假兼容。
 
 ### 4.2 `input_text_buffer.append`
 
@@ -261,7 +262,7 @@ V1 不要求：
 说明：
 
 - V1 公开协议主形态为 **Base64 音频块**；
-- 推荐内容为 24kHz 单声道 PCM16 对应的字节流编码结果；
+- 当前实现固定为 **24kHz 单声道 PCM16** 对应的字节流编码结果；
 - 不再把 `audio.chunk.meta + binary pcm` 作为公开协议标准；
 - 若未来保留二进制 PCM 通道，应作为内部/native 扩展能力，不纳入主公开协议。
 

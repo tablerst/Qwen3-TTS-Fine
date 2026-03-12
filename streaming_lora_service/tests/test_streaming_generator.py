@@ -194,6 +194,7 @@ class StreamingGeneratorTests(unittest.TestCase):
         self.assertEqual(generator.metrics.generated_steps, 3)
         self.assertEqual(generator.metrics.emitted_chunks, 2)
         self.assertEqual(generator.metrics.first_emitted_step, 2)
+        self.assertEqual(generator.metrics.finish_reason, "eos")
         self.assertTrue(generator.state.finished)
 
     def test_step_returns_none_until_chunk_threshold_then_flushes_on_finish(self) -> None:
@@ -262,7 +263,28 @@ class StreamingGeneratorTests(unittest.TestCase):
         self.assertEqual(session.state.decoded_until_step, 3)
         self.assertTrue(session.state.generation_finished)
         self.assertEqual(generation_snapshot["generated_steps"], 3)
+        self.assertEqual(session.state.last_generation_metrics["finish_reason"], "eos")
         self.assertEqual(qwen3tts.model.talker._cursor, 3)
+
+    def test_iter_audio_chunks_marks_length_finish_reason_when_hitting_max_new_tokens(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，长度上限。",
+            speaker="inference_speaker",
+            language="Chinese",
+            chunk_steps=4,
+            left_context_steps=1,
+            max_new_tokens=2,
+        )
+
+        chunks = list(generator.iter_audio_chunks())
+
+        expected_audio = np.asarray([0.11] * 4 + [0.12] * 4, dtype=np.float32)
+        self.assertEqual(b"".join(chunks), float_audio_to_pcm16le_bytes(expected_audio))
+        self.assertEqual(generator.metrics.generated_steps, 2)
+        self.assertEqual(generator.metrics.finish_reason, "length")
+        self.assertTrue(generator.state.finished)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,8 @@ class QwenRealtimeProtocolAdapter:
         audio_chunker: Callable[[SynthesizedAudio], list[bytes]] | None = None,
         audio_chunk_duration_ms: int = 320,
         auto_commit_chars: int = 80,
+        supported_response_formats: tuple[str, ...] = ("pcm",),
+        supported_sample_rates: tuple[int, ...] = (24000,),
     ) -> None:
         self.voice_registry = voice_registry
         self._session_factory = session_factory or RuntimeSession
@@ -29,11 +31,17 @@ class QwenRealtimeProtocolAdapter:
         self._audio_chunker = audio_chunker
         self._audio_chunk_duration_ms = audio_chunk_duration_ms
         self._auto_commit_chars = auto_commit_chars
+        self._supported_response_formats = tuple(item.lower() for item in supported_response_formats)
+        self._supported_sample_rates = tuple(int(item) for item in supported_sample_rates)
         self._session: RuntimeSession | None = None
         self._session_counter = count(1)
         self._response_counter = count(1)
         self._item_counter = count(1)
         self._punctuation_pattern = re.compile(r"[。！？!?；;\n]$")
+
+    @property
+    def current_session(self) -> RuntimeSession | None:
+        return self._session
 
     def open_connection(self, default_options: SessionOptions) -> list[dict[str, Any]]:
         profile = self.voice_registry.resolve(default_options.voice, model=default_options.model)
@@ -92,6 +100,7 @@ class QwenRealtimeProtocolAdapter:
         try:
             options = SessionOptions.from_session_update(event.get("session", {}))
             profile = self.voice_registry.resolve(options.voice, model=options.model)
+            self._validate_realtime_audio_contract(options)
         except Exception as exc:  # pragma: no cover - converted to protocol error response
             return [self._error("invalid_value", str(exc))]
 
@@ -285,6 +294,20 @@ class QwenRealtimeProtocolAdapter:
     def _chunk_size_bytes(self, sample_rate: int, channels: int) -> int:
         samples_per_chunk = max(1, int(sample_rate * self._audio_chunk_duration_ms / 1000.0))
         return samples_per_chunk * max(1, channels) * 2
+
+    def _validate_realtime_audio_contract(self, options: SessionOptions) -> None:
+        if options.response_format not in self._supported_response_formats:
+            supported = ", ".join(self._supported_response_formats)
+            raise ValueError(
+                "Realtime websocket currently only supports "
+                f"response_format in ({supported}); got {options.response_format!r}"
+            )
+        if options.sample_rate not in self._supported_sample_rates:
+            supported = ", ".join(str(item) for item in self._supported_sample_rates)
+            raise ValueError(
+                "Realtime websocket currently only supports "
+                f"sample_rate in ({supported}); got {options.sample_rate}"
+            )
 
     @staticmethod
     def _chunk_audio(audio_bytes: bytes, chunk_size_bytes: int) -> list[bytes]:

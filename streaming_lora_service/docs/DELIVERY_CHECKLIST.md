@@ -78,6 +78,10 @@
 - [x] 服务级 WebSocket smoke 测试通过
 - [x] HTTP TTS smoke 测试通过
 - [x] 协议兼容细节 smoke 测试通过
+- [x] WebSocket `response_format/sample_rate` 契约回归已补齐（不支持值直接返回 `error`）
+- [x] HTTP `stream=true` 中间 PCM 与最终 WAV 资源等价性回归已补齐
+- [x] 流式生成已记录 `finish_reason`（`eos` / `length`）用于诊断
+- [x] 已提供 offline / HTTP / WebSocket 三路质量回归对照工具（`qwen-tts-streaming-validate`）
 - [ ] 默认 LoRA bundle 真实模型人工试听通过
 - [x] 记录首包延迟和默认 chunk 粒度表现
 
@@ -116,7 +120,7 @@
 
 1. [ ] 把当前 session 绑定状态继续推进到真正跨 append/commit 的增量 continuation 复用
 2. [ ] 默认 bundle 人工试听回归
-3. [ ] 扩充真实 bundle 的回归样本与指标基线
+3. [ ] 扩充真实 bundle 的回归样本与指标基线（重点覆盖短文本异常长音频 / 重复词）
 
 ## 当前 MVP 说明
 

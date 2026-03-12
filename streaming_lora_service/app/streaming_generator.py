@@ -29,6 +29,7 @@ class StreamingGenerationMetrics:
     generated_steps: int = 0
     emitted_chunks: int = 0
     first_emitted_step: int | None = None
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -117,6 +118,7 @@ class StreamingCustomVoiceGenerator:
         next_token = self._sample_next_codec_token(self.state.next_logits)
         token_id = int(next_token.item())
         if token_id == self.prompt.sampling.eos_token_id:
+            self.metrics.finish_reason = "eos"
             self.state.finished = True
             chunk = self._emit_ready_audio(force=True, finished=True)
             self._sync_runtime_session()
@@ -139,6 +141,7 @@ class StreamingCustomVoiceGenerator:
         self.state.tts_pad_embed = step_outputs.tts_pad_embed
 
         if self.metrics.generated_steps >= self.prompt.sampling.max_new_tokens:
+            self.metrics.finish_reason = "length"
             self.state.finished = True
             chunk = self._emit_ready_audio(force=True, finished=True)
             self._sync_runtime_session()
@@ -281,6 +284,7 @@ class StreamingCustomVoiceGenerator:
                 "generated_steps": self.metrics.generated_steps,
                 "emitted_chunks": self.metrics.emitted_chunks,
                 "first_emitted_step": self.metrics.first_emitted_step,
+                "finish_reason": self.metrics.finish_reason,
                 "decoder": self.decoder.snapshot(),
             },
         )

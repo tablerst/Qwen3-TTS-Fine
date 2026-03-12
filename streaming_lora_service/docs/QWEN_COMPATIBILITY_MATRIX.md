@@ -21,6 +21,10 @@
 | `language_type` | 支持 | **强兼容** | 公开语义保持一致 |
 | `instructions` | 支持（指定模型） | **部分兼容** | 是否生效取决于当前公开 `model` 能力 |
 | `optimize_instructions` | 支持（指定模型） | **部分兼容** | 可保留字段与语义，内部可按能力决定是否真正实现 |
+| Realtime `response_format=pcm` | 支持 | **强兼容** | 当前 WebSocket V1 仅接受 `pcm` |
+| Realtime `response_format=wav` | 支持（官方能力视模型而定） | **不支持** | 当前实现会直接返回 `error`，避免客户端把 delta 误当作 WAV |
+| Realtime `sample_rate=24000` | 支持 | **强兼容** | 当前 WebSocket V1 固定输出 24kHz 单声道 PCM16 |
+| Realtime 其他 `sample_rate` | 支持（官方能力视模型而定） | **不支持** | 当前实现会直接返回 `error`，避免“回显成功但实际未生效” |
 | Realtime `session.update` | 支持 | **强兼容** | 作为公开主初始化事件 |
 | Realtime `input_text_buffer.append` | 支持 | **强兼容** | 作为公开主增量输入事件 |
 | Realtime `input_text_buffer.commit` | 支持 | **强兼容** | 作为公开主提交事件 |
@@ -84,6 +88,11 @@
 - 前端易消费；
 - SDK 易封装；
 - 文档与官方示例更容易对齐。
+
+但当前 V1 也明确收紧了一点：
+
+- 虽然协议字段保留 `response_format` / `sample_rate` 的官方风格外观；
+- 但当前实现为了避免客户端误解码，WebSocket 路径只接受 `pcm + 24000` 这一组经过验证的契约。
 
 ## 4. 对外表述建议
 

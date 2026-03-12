@@ -44,6 +44,40 @@ class ProtocolSmokeTests(unittest.TestCase):
         self.assertEqual([event["type"] for event in events], ["session.created", "session.updated"])
         self.assertEqual(events[1]["session"]["voice"], "yachiyo_formal")
 
+    def test_session_update_rejects_unsupported_response_format(self) -> None:
+        adapter = self.make_adapter()
+
+        events = adapter.handle_event(
+            {
+                "type": "session.update",
+                "session": {
+                    "model": "qwen3-tts-flash-realtime",
+                    "voice": "yachiyo_formal",
+                    "response_format": "wav",
+                },
+            }
+        )
+
+        self.assertEqual([event["type"] for event in events], ["error"])
+        self.assertIn("response_format", events[0]["error"]["message"])
+
+    def test_session_update_rejects_unsupported_sample_rate(self) -> None:
+        adapter = self.make_adapter()
+
+        events = adapter.handle_event(
+            {
+                "type": "session.update",
+                "session": {
+                    "model": "qwen3-tts-flash-realtime",
+                    "voice": "yachiyo_formal",
+                    "sample_rate": 16000,
+                },
+            }
+        )
+
+        self.assertEqual([event["type"] for event in events], ["error"])
+        self.assertIn("sample_rate", events[0]["error"]["message"])
+
     def test_commit_flow_returns_qwen_style_events(self) -> None:
         adapter = self.make_adapter()
         adapter.open_connection(

@@ -140,6 +140,7 @@ with open("demo.wav", "wb") as f:
 当 `stream=true` 时，服务返回 `application/x-ndjson`。
 
 - 中间多行 JSON：`output.audio.data` 为 Base64 PCM 音频块
+- 中间多行 JSON 当前固定为 **24kHz / 单声道 / PCM16** 音频块
 - 最后一行 JSON：`finish_reason="stop"`，并包含完整音频的 `audio.id` / `audio.url`
 
 ### 5.1 curl
@@ -295,7 +296,9 @@ asyncio.run(main())
 ## 8. 当前已知注意事项
 
 - 当前服务默认返回单声道 `24000 Hz` 音频
+- WebSocket `session.update` 当前只接受 `response_format="pcm"` 与 `sample_rate=24000`；传其他值会直接返回 `error`
 - 流式中间块是 Base64 编码的 PCM16 音频片段，不是每块都带 WAV 文件头
+- HTTP `stream=true` 的中间 PCM 片段与最后 `audio.url` 下载到的 WAV 属于同一份音频内容；如需试听，优先下载最终 WAV
 - 完整 WAV 建议通过最后一条响应中的 `audio.url` 下载
 - 如果启动日志提示 `No supported WebSocket library detected`，说明当前环境缺少 `websockets` / `wsproto`；安装 `websockets` 后请重启服务进程
 - 当前版本已具备真实流式公开能力，但仍属于可联调 MVP，生产化还需补鉴权、限流、监控与反向代理

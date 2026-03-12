@@ -142,6 +142,7 @@ V1 的主公开接口为 Realtime WebSocket。
 ### 5.3 关键约束
 
 - `response.audio.delta` 为公开主输出形态；
+- 当前 WebSocket Realtime V1 **只接受** `response_format="pcm"` 与 `sample_rate=24000`；不支持的值会直接返回 `error`，而不是静默降级；
 - 普通调用不暴露 `bundle_dir`；
 - V1 不再把旧自定义事件作为主协议继续维护。
 - 当前 `response.created` / `response.done` 中已补充 `modalities`、`conversation_id` 等更接近官方风格的字段。
@@ -216,6 +217,7 @@ V1 的主公开接口为 Realtime WebSocket。
 当 `stream=true` 时，当前 MVP 返回 `application/x-ndjson`：
 
 - 中间块包含 `output.audio.data`（Base64 音频片段）
+- 中间块当前固定为 **24kHz / 单声道 / PCM16** 片段
 - 最后一块返回 `finish_reason = "stop"`
 
 ## 7. 推荐示例

@@ -145,14 +145,30 @@ class BundleSpeechService:
             instruct=session.options.instructions or None,
         )
 
-    def synthesize_http(self, *, text: str, model: str, voice: str, language_type: str, instructions: str = "") -> SynthesizedAudio:
+    def build_runtime_session(
+        self,
+        *,
+        model: str,
+        voice: str,
+        language_type: str,
+        instructions: str = "",
+        session_id: str | None = None,
+    ) -> RuntimeSession:
         options = SessionOptions(
             model=model,
             voice=voice,
             language_type=language_type,
             instructions=instructions,
         )
-        runtime_session = RuntimeSession(session_id=f"http_{uuid4().hex}", options=options)
+        return RuntimeSession(session_id=session_id or f"http_{uuid4().hex}", options=options)
+
+    def synthesize_http(self, *, text: str, model: str, voice: str, language_type: str, instructions: str = "") -> SynthesizedAudio:
+        runtime_session = self.build_runtime_session(
+            model=model,
+            voice=voice,
+            language_type=language_type,
+            instructions=instructions,
+        )
         return self.synthesize(runtime_session, text)
 
     def stream_synthesize(self, session, text: str):
@@ -170,13 +186,12 @@ class BundleSpeechService:
         yield from generator.iter_audio_chunks()
 
     def stream_synthesize_http(self, *, text: str, model: str, voice: str, language_type: str, instructions: str = ""):
-        options = SessionOptions(
+        runtime_session = self.build_runtime_session(
             model=model,
             voice=voice,
             language_type=language_type,
             instructions=instructions,
         )
-        runtime_session = RuntimeSession(session_id=f"http_{uuid4().hex}", options=options)
         yield from self.stream_synthesize(runtime_session, text)
 
     def store_wav_asset(self, synthesized: SynthesizedAudio) -> StoredAudioAsset:
