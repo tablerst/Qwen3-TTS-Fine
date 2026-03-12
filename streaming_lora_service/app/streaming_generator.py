@@ -130,9 +130,7 @@ class StreamingCustomVoiceGenerator:
         self.state.sampled_tokens.append(token_id)
         self.decoder.push_codec_step(codec_ids)
         self.metrics.generated_steps += 1
-        self.state.attention_mask = torch.cat(
-            [self.state.attention_mask, torch.ones_like(self.state.attention_mask[:, :1])], dim=1
-        )
+        self.state.attention_mask = getattr(step_outputs, "streaming_attention_mask")
         self.state.past_key_values = step_outputs.past_key_values
         self.state.past_hidden = step_outputs.past_hidden
         self.state.generation_step = int(step_outputs.generation_step)
@@ -195,15 +193,18 @@ class StreamingCustomVoiceGenerator:
         )
 
     def _run_single_step(self, next_token: torch.Tensor):
+        next_attention_mask = torch.cat(
+            [self.state.attention_mask, torch.ones_like(self.state.attention_mask[:, :1])], dim=1
+        )
         cache_position = torch.arange(
             self.state.attention_mask.shape[1],
             self.state.attention_mask.shape[1] + next_token.shape[1],
             device=next_token.device,
         )
         with torch.inference_mode():
-            return self.qwen3tts.model.talker(
+            outputs = self.qwen3tts.model.talker(
                 input_ids=next_token,
-                attention_mask=self.state.attention_mask,
+                attention_mask=next_attention_mask,
                 cache_position=cache_position,
                 past_key_values=self.state.past_key_values,
                 past_hidden=self.state.past_hidden,
@@ -218,6 +219,8 @@ class StreamingCustomVoiceGenerator:
                 subtalker_top_p=self.prompt.sampling.subtalker_top_p,
                 subtalker_temperature=self.prompt.sampling.subtalker_temperature,
             )
+            setattr(outputs, "streaming_attention_mask", next_attention_mask)
+            return outputs
 
     def _extract_codec_ids(self, step_outputs: Any) -> torch.Tensor:
         hidden_states = getattr(step_outputs, "hidden_states", None)

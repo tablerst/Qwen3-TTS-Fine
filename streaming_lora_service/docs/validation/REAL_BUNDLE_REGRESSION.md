@@ -108,7 +108,9 @@ JSON 格式示例：
 
 ## 6. 2026-03-12 当前观察到的结论
 
-基于 `docs/validation/20260312_compare_seeded/metrics.json`：
+先前问题定位基于：
+
+- `docs/validation/20260312_compare_seeded/metrics.json`
 
 - `http_streaming_runtime` 与 `websocket_realtime` 在固定种子下已经对齐
 - 但它们都比离线 / HTTP 非流式长约 `3.5x`
@@ -124,6 +126,22 @@ JSON 格式示例：
 - WebSocket 封装层把音频块弄坏
 - Base64 `response.audio.delta` 拼接错误
 - 单纯播放器把 24k PCM16 解错
+
+### 6.1 修复后基线
+
+根因修复后，新基线产物为：
+
+- `docs/validation/20260312_compare_fix1/metrics.json`
+
+当前结果显示：
+
+- `http_streaming_runtime` 与 `websocket_realtime` 仍然对齐
+- 且二者已回落到与 `http_non_streaming` 基本一致
+- summary 为：
+  - `warning_count = 0`
+  - `warning_case_count = 0`
+
+因此目前推荐把 `20260312_compare_fix1` 作为后续继续改 streaming 路径时的回归基线。
 
 ## 7. 当前已知限制
 

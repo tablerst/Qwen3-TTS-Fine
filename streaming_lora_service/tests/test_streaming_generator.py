@@ -80,6 +80,14 @@ class FakeTalker:
                 hidden_states=((torch.zeros((1, prompt_length, self._hidden_size), dtype=torch.float32),), None),
             )
 
+        attention_mask = kwargs["attention_mask"]
+        cache_position = kwargs["cache_position"]
+        expected_attention_length = int(cache_position[-1].item()) + 1
+        if attention_mask.shape[1] != expected_attention_length:
+            raise AssertionError(
+                f"generation attention_mask length {attention_mask.shape[1]} must match cache_position end {expected_attention_length}"
+            )
+
         token = int(kwargs["input_ids"][0, 0].item())
         self._cursor += 1
         next_token = self._planned_tokens[self._cursor]

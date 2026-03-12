@@ -1,0 +1,169 @@
+{
+  "config": {
+    "bundle_dir": "outputs\\lora_formal_single_speaker_1p7b_timbre_transfer_20260310_bundle_best_refcand8",
+    "public_model_alias": "qwen3-tts-flash-realtime",
+    "default_voice_alias": "default",
+    "voice_registry_file": "streaming_lora_service\\configs\\voice_registry.example.json",
+    "chunk_steps": 4,
+    "left_context_steps": 25,
+    "samples_per_step": 1920,
+    "max_stream_to_offline_ratio": 1.5,
+    "seed": 1234
+  },
+  "summary": {
+    "case_count": 2,
+    "warning_count": 0,
+    "warning_case_count": 0,
+    "case_ids_with_warnings": []
+  },
+  "cases": [
+    {
+      "case": {
+        "id": "zh_formal",
+        "text": "你好，欢迎使用 Qwen3-TTS 实时语音服务。这是一段用于端到端验证的正式女声测试。",
+        "language_type": "Chinese",
+        "instructions": "正式，平静，清晰。",
+        "voice": null
+      },
+      "offline_non_streaming": {
+        "path": "offline_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 384000,
+        "duration_s": 8.0,
+        "elapsed_ms": 31548.91,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\zh_formal\\offline_non_streaming.wav"
+      },
+      "http_non_streaming": {
+        "path": "http_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 372480,
+        "duration_s": 7.76,
+        "elapsed_ms": 31795.08,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": 97,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\zh_formal\\http_non_streaming.wav"
+      },
+      "http_streaming_runtime": {
+        "path": "http_streaming_runtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 372480,
+        "duration_s": 7.76,
+        "elapsed_ms": 30322.12,
+        "ttfb_ms": 1484.08,
+        "delta_chunks": 25,
+        "generated_steps": 97,
+        "emitted_chunks": 25,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\zh_formal\\http_streaming_runtime.wav"
+      },
+      "websocket_realtime": {
+        "path": "websocket_realtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 372480,
+        "duration_s": 7.76,
+        "elapsed_ms": 27069.33,
+        "ttfb_ms": 1160.49,
+        "delta_chunks": 25,
+        "generated_steps": 97,
+        "emitted_chunks": 25,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\zh_formal\\websocket_realtime.wav"
+      },
+      "warnings": []
+    },
+    {
+      "case": {
+        "id": "ja_formal",
+        "text": "こんにちは。本日はリアルタイム音声サービスのエンドツーエンド検証を行っています。",
+        "language_type": "Japanese",
+        "instructions": "落ち着いて、丁寧に。",
+        "voice": null
+      },
+      "offline_non_streaming": {
+        "path": "offline_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 299520,
+        "duration_s": 6.24,
+        "elapsed_ms": 23471.05,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\ja_formal\\offline_non_streaming.wav"
+      },
+      "http_non_streaming": {
+        "path": "http_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 314880,
+        "duration_s": 6.56,
+        "elapsed_ms": 23794.04,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": 82,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\ja_formal\\http_non_streaming.wav"
+      },
+      "http_streaming_runtime": {
+        "path": "http_streaming_runtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 314880,
+        "duration_s": 6.56,
+        "elapsed_ms": 22614.6,
+        "ttfb_ms": 1155.92,
+        "delta_chunks": 21,
+        "generated_steps": 82,
+        "emitted_chunks": 21,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\ja_formal\\http_streaming_runtime.wav"
+      },
+      "websocket_realtime": {
+        "path": "websocket_realtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 314880,
+        "duration_s": 6.56,
+        "elapsed_ms": 23482.87,
+        "ttfb_ms": 1169.56,
+        "delta_chunks": 21,
+        "generated_steps": 82,
+        "emitted_chunks": 21,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260312_compare_fix1\\ja_formal\\websocket_realtime.wav"
+      },
+      "warnings": []
+    }
+  ]
+}

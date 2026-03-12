@@ -105,6 +105,48 @@ qwen-tts-streaming-validate --bundle_dir outputs/lora_formal_single_speaker_1p7b
 - 不是增量解码后才把正常音频重复裁出来；
 - 也不是 WS 事件包装把音频块拼坏了。
 
+## 已定位并修复的根因
+
+根因已经在代码层面定位到：
+
+- 文件：`streaming_lora_service/app/streaming_generator.py`
+- 问题点：`_run_single_step()` 调用 `talker.forward(...)` 时，使用的是**扩展前**的 `attention_mask`
+
+这会导致：
+
+- 当前新采样 token 已经作为 `input_ids` 参与该步生成；
+- 但 attention mask 仍停留在“上一时刻”的长度；
+- 结果是 step-level 流式生成轨迹逐步偏离 `talker.generate(...)`
+
+在真实模型上做前 20 个 step 的 fixed-seed 对照时，只要把 mask 改为“先扩一位再 forward”，手写流式 sampler 的主 codec token 序列就能重新对齐 `talker.generate(...)` 的前缀。
+
+## 修复后验证结果
+
+修复后的新产物：
+
+- `docs/validation/20260312_compare_fix1/metrics.json`
+
+关键结果：
+
+1. `http_streaming_runtime` 与 `websocket_realtime` 继续保持一致
+2. 它们不再比非流式长 `3.5x`
+3. 反而已经与 `http_non_streaming` 对齐：
+  - 中文：`7.76s / generated_steps=97`
+  - 日文：`6.56s / generated_steps=82`
+4. 报告 summary：
+  - `warning_count = 0`
+  - `warning_case_count = 0`
+
+这意味着：
+
+> 本次“短文本被拉长、重复词、严重过生成”的主根因已经得到修复。
+
+剩余工作更偏向：
+
+- 继续扩大真实 bundle 回归样本
+- 补人工试听结论
+- 后续再推进 cross-append/commit continuation
+
 ### 3. 跨 `append/commit` 的真正 continuation 仍是后续项
 
 当前 runtime session 的状态复用仍偏向：
@@ -120,7 +162,6 @@ qwen-tts-streaming-validate --bundle_dir outputs/lora_formal_single_speaker_1p7b
 ## 建议下一步
 
 1. 用同一 bundle、同一文本做离线 / HTTP 非流式 / WebSocket 拼接音频三路对比
-2. 继续对照 `StreamingCustomVoiceGenerator` 与 `model.generate(...)` 的 prompt/prefill/step 推进差异
-3. 重点检查为什么流式路径在 `finish_reason = eos` 的前提下仍会多生成约 `3.3x ~ 3.6x` codec step
-4. 把“短文本最长时长阈值”做成可选的真实 bundle 回归测试
-5. 在继续推进 cross-append/commit continuation 前，先把当前真实流式 stop 行为定位清楚
+2. 把“短文本最长时长阈值”做成可选的真实 bundle 回归测试
+3. 扩大真实 bundle case 覆盖到更多语言/更长文本
+4. 在继续推进 cross-append/commit continuation 前，保持当前 seeded 三路对照作为回归基线

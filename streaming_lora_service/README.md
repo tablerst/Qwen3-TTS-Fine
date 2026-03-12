@@ -177,6 +177,21 @@ V1 暂不追求：
 - 默认 LoRA bundle 的真实端到端 TTFB / chunk 粒度指标已经记录，但**人工试听结论**仍需最终确认。
 - 当前 runtime session 的状态复用仍偏向**同一段文本生成中的恢复**；真正跨 `append/commit` 的 continuation 仍未宣称完成。
 
+## 2026-03-12 修复更新：step-level 流式过生成
+
+本轮已修复一个会直接导致流式路径严重过生成的根因：
+
+- `StreamingCustomVoiceGenerator` 在单步生成时，原先把**旧的** `attention_mask` 传给 `talker.forward(...)`
+- 这会让“当前新采样 token 已经作为输入参与生成，但 mask 还没把它算进去”
+- 修复后改为：**先扩展 `attention_mask`，再执行该 step 的 talker forward**
+
+修复效果已通过真实 bundle 三路对照验证：
+
+- `docs/validation/20260312_compare_fix1/metrics.json`
+- 中文样本：流式从约 `27.84s` 回落到 `7.76s`
+- 日文样本：流式从约 `22.08s` 回落到 `6.56s`
+- `http_streaming_runtime` 与 `websocket_realtime` 现在和 `http_non_streaming` 对齐，告警数降为 `0`
+
 也就是说：
 
 > **当前 MVP 已经可用、可跑、可联调；**
