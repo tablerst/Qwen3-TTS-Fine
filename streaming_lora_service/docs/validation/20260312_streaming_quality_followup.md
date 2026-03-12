@@ -202,9 +202,285 @@ qwen-tts-streaming-validate --bundle_dir outputs/lora_formal_single_speaker_1p7b
 
 这与 `DELIVERY_CHECKLIST.md` 中的未完成项保持一致。
 
+## 新增诊断方案：`streaming_sampler_full_decode`
+
+为了把“流式采样轨迹偏移”和“增量解码拼接损耗”拆开，当前方案新增一个显式诊断路径：
+
+- `offline_non_streaming`
+  - 官方 `generate_custom_voice(..., non_streaming_mode=True)`
+  - 用于观察离线整段模式的最佳参考口径
+- `http_non_streaming`
+  - 服务侧 `generate_custom_voice_step_aware(...)`
+  - 用于观察服务 full-generate 但非流式下发的结果
+  - 当前默认走 `non_streaming_mode=False`，与在线流式共享同一套 streaming-compatible prompt 语义
+- `streaming_sampler_full_decode`
+  - 与 `http_streaming_runtime` / `websocket_realtime` 共享同一套 step-level sampler
+  - 但不采用增量音频拼接，而是在采样结束后把收集到的全部 codec step **一次性 full decode**
+- `http_streaming_runtime`
+  - 真实在线流式路径：step-level sampler + incremental decoder
+- `websocket_realtime`
+  - 真实在线 Realtime 路径：与 HTTP 流式共享 sampler 与增量解码链路
+
+这条新增路径的用途非常直接：
+
+1. 如果 `http_non_streaming` 与 `streaming_sampler_full_decode` 已经分叉，说明问题主要在 **step-level sampler 与 full generate 不一致**。
+2. 如果 `streaming_sampler_full_decode` 与 `http_streaming_runtime` 分叉，说明问题主要在 **incremental decode / overlap 裁切 / 分块拼接**。
+3. 如果 `http_streaming_runtime` 与 `websocket_realtime` 一致，而两者都偏离 `streaming_sampler_full_decode`，则基本可以把问题锁定在 **服务内部增量解码链路**，而不是 WS 包装层。
+
+需要特别强调的是：
+
+- `http_non_streaming`
+- `streaming_sampler_full_decode`
+
+这两条路径当前都基于 `non_streaming_mode=False` 的 prompt 语义。
+
+因此如果这两条路径仍然分叉，优先应该怀疑：
+
+- 官方 `talker.generate(...)` 的采样循环
+- 我们手写 `StreamingCustomVoiceGenerator` 的 step loop / logits sampling 复刻
+
+而不是先怀疑 prompt layout 本身。
+
+因此，后续主观听感明显差异不应只再看“三路时长是否接近”，而应优先看：
+
+- `http_non_streaming` vs `streaming_sampler_full_decode`
+- `streaming_sampler_full_decode` vs `http_streaming_runtime`
+
+这两组比较能分别回答“采样是否分叉”和“解码是否损声”。
+
+## 新增 codec 级分叉诊断
+
+当前 `metrics.json` 还会额外输出 `codec_diagnostics`，至少包含以下三组：
+
+- `http_non_vs_streaming_sampler_full_decode`
+- `streaming_sampler_full_decode_vs_http_streaming_runtime`
+- `http_streaming_runtime_vs_websocket_realtime`
+
+每组包含：
+
+- `reference_codec_steps`
+- `candidate_codec_steps`
+- `shared_prefix_steps`
+- `first_divergence_step`
+- `reference_step_tokens`
+- `candidate_step_tokens`
+- `identical`
+
+解释方式：
+
+1. 如果 `shared_prefix_steps` 很短，说明两条路径在 very early stage 就开始采样分叉。
+2. 如果 `shared_prefix_steps` 接近总 steps 且 `identical=false`，说明只是尾段收束差异。
+3. 如果 `streaming_sampler_full_decode_vs_http_streaming_runtime.identical=true`，则可以把 codec 采样层面的责任从增量解码层剥离出去。
+
+这比单看音频相关性更硬：
+
+- 音频相关性告诉我们“听起来差了多少”；
+- codec 分叉诊断告诉我们“从第几步开始走岔了”。
+
+## 新增实证：采样敏感性对照
+
+当前还补跑了一轮采样敏感性实验，产物位于：
+
+- `docs/validation/20260312_candidate8_v2_sampling_sensitivity/metrics.json`
+
+使用同一 bundle、同一 speaker、同一 text / instructions / seed，只改变：
+
+- `do_sample`
+- `repetition_penalty`
+
+关键结果：
+
+### 中文 `zh_formal`
+
+- baseline（采样 + `repetition_penalty=1.05`）
+  - `first_divergence_step = 7`
+  - `106` vs `99` codec steps
+- 去掉 repetition penalty（仍采样）
+  - `first_divergence_step = 7`
+  - `95` vs `99` codec steps
+- greedy（`do_sample=false`）
+  - `identical = true`
+  - `94` vs `94` codec steps
+- greedy + `repetition_penalty=1.0`
+  - `identical = true`
+  - `104` vs `104` codec steps
+
+### 日文 `ja_formal`
+
+- baseline（采样 + `repetition_penalty=1.05`）
+  - `first_divergence_step = 67`
+- 去掉 repetition penalty（仍采样）
+  - `first_divergence_step = 65`
+- greedy（`do_sample=false`）
+  - `identical = true`
+- greedy + `repetition_penalty=1.0`
+  - `identical = true`
+
+这组结果非常重要，因为它说明：
+
+1. **只要关闭采样（greedy），official `talker.generate(...)` 与手写 step loop 就能重新对齐。**
+2. 中文 baseline 第 7 步分叉并不是由 `repetition_penalty` 单独触发，因为把 penalty 改成 `1.0` 后仍然在第 7 步分叉。
+3. 因此当前 candidate8 v2 的主矛盾更像是：
+   - **采样模式下** official `GenerationMixin` 采样循环
+   - 与手写 `_sample_next_codec_token(...)` 之间
+   - 仍存在行为差异。
+
+换句话说：
+
+> 这轮实验把嫌疑进一步收敛到了 **sampling loop fidelity**，而不再只是泛泛地说“在线和离线生成方式不同”。
+
+## 2026-03-13 追加修复：采样前统一转 `float32`
+
+进一步对照官方 `transformers.GenerationMixin._sample()` 后发现：
+
+- 官方在采样前会执行 `outputs.logits[:, -1, :].to(copy=True, dtype=torch.float32, ...)`
+- 原先 `StreamingCustomVoiceGenerator` 直接在模型原始 dtype（典型是 `bfloat16`）上执行 softmax / multinomial
+
+当前已将流式 step sampler 改为：
+
+- prefill 后的 `next_logits` 统一转 `float32`
+- 每个 step 后缓存的 `next_logits` 统一转 `float32`
+- `_sample_next_codec_token(...)` 内部在采样前也再次显式使用 `float32`
+
+并已补充单测：
+
+- `test_sampling_logits_are_upcast_to_float32`
+
+### 修复效果（candidate8 v2）
+
+新产物：
+
+- `docs/validation/20260313_candidate8_v2_path_diagnostic_float32/metrics.json`
+- `docs/validation/20260313_candidate8_v2_sampling_sensitivity_float32/zh_formal_baseline.json`
+- `docs/validation/20260313_candidate8_v2_sampling_sensitivity_float32/ja_formal_baseline.json`
+
+#### 中文 `zh_formal`
+
+修复前：
+
+- `first_divergence_step = 7`
+- `106` vs `99` codec steps
+- `http_non_streaming` vs `streaming_sampler_full_decode` 波形相关性约 `0.011`
+
+修复后：
+
+- `first_divergence_step = 83`
+- `106` vs `105` codec steps
+- `http_non_streaming = 8.48s`
+- `streaming_sampler_full_decode = 8.40s`
+- `http_non_streaming` vs `streaming_sampler_full_decode` 波形相关性提升到约 `0.801`
+
+这说明 `float32` 采样精度差异确实是中文主观差异中的一个重要来源，而且修复收益非常显著。
+
+#### 日文 `ja_formal`
+
+修复前后基本一致：
+
+- `first_divergence_step = 67`
+- `83` vs `83` codec steps
+
+说明日文 baseline 的剩余差异并不主要由 logits 精度造成，后续仍需继续检查 sampling loop 的其余细节。
+
+### 当前结论更新
+
+截至目前，可以把剩余问题拆成两层：
+
+1. **已修复的一层**：采样前未对齐官方 `float32` logits 处理，中文收益明显。
+2. **仍待继续排查的一层**：在 `float32` 已对齐后，日文 baseline 与中文尾段仍存在 sampling-loop fidelity gap，说明后续还要继续比对 official `generate(...)` 的 processor / warper / sampling 细节。
+
+## 2026-03-13 追加修复：重复 token 被重复施加 repetition penalty
+
+继续比对 HuggingFace 的 `RepetitionPenaltyLogitsProcessor` 后发现：
+
+- 官方实现对“历史里出现过的 token”是**每个 token 至多施加一次 penalty**；
+- 原先 `StreamingCustomVoiceGenerator._apply_repetition_penalty()` 会按 `sampled_tokens` 顺序逐个处理；
+- 当同一个 token 在历史中出现多次时，会被**重复惩罚多次**，这会在 sampling 模式的中后段持续放大偏移。
+
+当前已修复为：
+
+- 只对 `sampled_tokens` 的去重集合施加 penalty；
+- 并已补充单测：
+  - `test_repetition_penalty_is_applied_once_per_unique_token`
+
+## 修复后的关键结果
+
+### baseline sampling sensitivity 已完全对齐
+
+新产物：
+
+- `docs/validation/20260313_candidate8_v2_sampling_sensitivity_float32_repfix/zh_formal_baseline.json`
+- `docs/validation/20260313_candidate8_v2_sampling_sensitivity_float32_repfix/ja_formal_baseline.json`
+
+结果：
+
+- 中文 `zh_formal`
+  - `106` vs `106` codec steps
+  - `shared_prefix_steps = 106`
+  - `identical = true`
+- 日文 `ja_formal`
+  - `83` vs `83` codec steps
+  - `shared_prefix_steps = 83`
+  - `identical = true`
+
+这说明在默认 sampling 参数下：
+
+> `http_non_streaming` 与 `streaming_sampler_full_decode` 的 codec 轨迹已经重新完全对齐。
+
+### 五路服务诊断也已完全收敛
+
+新产物：
+
+- `docs/validation/20260313_candidate8_v2_path_diagnostic_samplingfix/metrics.json`
+
+关键结果：
+
+- 中文：
+  - `http_non_streaming = 8.48s / 106 steps`
+  - `streaming_sampler_full_decode = 8.48s / 106 steps`
+  - `http_streaming_runtime = 8.48s / 106 steps`
+  - `websocket_realtime = 8.48s / 106 steps`
+- 日文：
+  - `http_non_streaming = 6.64s / 83 steps`
+  - `streaming_sampler_full_decode = 6.64s / 83 steps`
+  - `http_streaming_runtime = 6.64s / 83 steps`
+  - `websocket_realtime = 6.64s / 83 steps`
+
+所有 codec 对比均为：
+
+- `identical = true`
+
+即：
+
+- `http_non_streaming`
+- `streaming_sampler_full_decode`
+- `http_streaming_runtime`
+- `websocket_realtime`
+
+在 candidate8 v2 默认回归 case 上已经完成对齐。
+
+## 当前最终判断（截至 2026-03-13）
+
+candidate8 v2 本轮主要修复了两个 sampling fidelity 问题：
+
+1. **采样前未统一转 `float32`**
+2. **重复 token 被重复施加 repetition penalty**
+
+两者修复后，服务路径已经与服务非流式路径重新对齐。
+
+当前仍保留的差异主要只剩：
+
+- `offline_non_streaming`
+  - 走 `generate_custom_voice(..., non_streaming_mode=True)`
+- 服务路径
+  - 走 `non_streaming_mode=False` 的服务语义
+
+因此，当前已不再优先怀疑服务 streaming fidelity 本身；剩余 offline/online 差异主要属于**模式定义差异**，而不是服务在线路径继续“偷偷跑偏”。
+
 ## 建议下一步
 
-1. 用同一 bundle、同一文本做离线 / HTTP 非流式 / WebSocket 拼接音频三路对比
-2. 把“短文本最长时长阈值”做成可选的真实 bundle 回归测试
-3. 扩大真实 bundle case 覆盖到更多语言/更长文本
-4. 在继续推进 cross-append/commit continuation 前，保持当前 seeded 三路对照作为回归基线
+1. 用同一 bundle、同一文本做离线 / HTTP 非流式 / `streaming_sampler_full_decode` / HTTP 流式 / WebSocket 五路对比
+2. 优先检查 `http_non_streaming` 与 `streaming_sampler_full_decode` 的 codec step 数、时长与主观听感是否一致
+3. 再检查 `streaming_sampler_full_decode` 与 `http_streaming_runtime` 的音频差异，确认增量解码损耗占比
+4. 把“短文本最长时长阈值”做成可选的真实 bundle 回归测试
+5. 扩大真实 bundle case 覆盖到更多语言/更长文本
+6. 在继续推进 cross-append/commit continuation 前，保持当前 seeded 五路对照作为回归基线

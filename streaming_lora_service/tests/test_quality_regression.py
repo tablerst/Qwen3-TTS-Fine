@@ -1,15 +1,25 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 
+import numpy as np
+
+from streaming_lora_service.app.audio_utils import float_audio_to_pcm16le_bytes
+from streaming_lora_service.app.server import BundleSpeechService
+from streaming_lora_service.app.voice_registry import VoiceRegistry
 from streaming_lora_service.quality_regression import (
     PathMetrics,
     ValidationCase,
     ValidationCaseResult,
     audio_duration_seconds,
     build_case_warnings,
+    build_codec_diagnostics,
     build_summary,
+    compare_codec_sequences,
+    collect_streaming_sampler_full_decode,
 )
+from streaming_lora_service.tests.test_streaming_generator import FakeQwen3TTS
 
 
 class QualityRegressionTests(unittest.TestCase):
@@ -87,6 +97,71 @@ class QualityRegressionTests(unittest.TestCase):
         self.assertEqual(summary["warning_count"], 1)
         self.assertEqual(summary["warning_case_count"], 1)
         self.assertEqual(summary["case_ids_with_warnings"], ["warn"])
+
+    def test_collect_streaming_sampler_full_decode_returns_full_decode_audio(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        service = BundleSpeechService(
+            SimpleNamespace(
+                loaded_bundle=SimpleNamespace(qwen3tts=qwen3tts),
+                voice_registry=VoiceRegistry.single_voice(
+                    voice_alias="yachiyo_formal",
+                    speaker_name="inference_speaker",
+                    model_alias="qwen3-tts-flash-realtime",
+                ),
+                public_model_alias="qwen3-tts-flash-realtime",
+                default_voice_alias="yachiyo_formal",
+                chunk_steps=2,
+                left_context_steps=1,
+                samples_per_step=4,
+            )
+        )
+
+        collected = collect_streaming_sampler_full_decode(
+            service,
+            ValidationCase(id="diag", text="你好，诊断。", language_type="Chinese"),
+        )
+
+        expected_audio = np.asarray([0.11] * 4 + [0.12] * 4 + [0.13] * 4, dtype=np.float32)
+        self.assertEqual(collected.audio_bytes, float_audio_to_pcm16le_bytes(expected_audio))
+        self.assertEqual(collected.metrics.path, "streaming_sampler_full_decode")
+        self.assertEqual(collected.metrics.sample_rate, 24000)
+        self.assertEqual(collected.metrics.generated_steps, 3)
+        self.assertEqual(collected.metrics.codec_steps, 3)
+        self.assertEqual(collected.metrics.finish_reason, "eos")
+        self.assertEqual(collected.metrics.delta_chunks, 2)
+        self.assertEqual(collected.codec_tokens, ((11, 31, 51), (12, 32, 52), (13, 33, 53)))
+
+    def test_compare_codec_sequences_reports_first_divergence(self) -> None:
+        comparison = compare_codec_sequences(
+            "http_non_streaming",
+            ((1, 10, 11), (2, 12, 13), (3, 14, 15)),
+            "streaming_sampler_full_decode",
+            ((1, 10, 11), (2, 99, 13), (4, 16, 17)),
+        )
+
+        self.assertIsNotNone(comparison)
+        assert comparison is not None
+        self.assertEqual(comparison.shared_prefix_steps, 1)
+        self.assertEqual(comparison.first_divergence_step, 1)
+        self.assertEqual(comparison.reference_step_tokens, [2, 12, 13])
+        self.assertEqual(comparison.candidate_step_tokens, [2, 99, 13])
+        self.assertFalse(comparison.identical)
+
+    def test_build_codec_diagnostics_collects_available_pairs(self) -> None:
+        diagnostics = build_codec_diagnostics(
+            {
+                "http_non_streaming": SimpleNamespace(codec_tokens=((1, 2, 3), (4, 5, 6))),
+                "streaming_sampler_full_decode": SimpleNamespace(codec_tokens=((1, 2, 3), (7, 8, 9))),
+                "http_streaming_runtime": SimpleNamespace(codec_tokens=((1, 2, 3), (7, 8, 9))),
+                "websocket_realtime": SimpleNamespace(codec_tokens=((1, 2, 3), (7, 8, 9))),
+            }
+        )
+
+        self.assertIn("http_non_vs_streaming_sampler_full_decode", diagnostics)
+        self.assertIn("streaming_sampler_full_decode_vs_http_streaming_runtime", diagnostics)
+        self.assertIn("http_streaming_runtime_vs_websocket_realtime", diagnostics)
+        self.assertEqual(diagnostics["http_non_vs_streaming_sampler_full_decode"].first_divergence_step, 1)
+        self.assertTrue(diagnostics["streaming_sampler_full_decode_vs_http_streaming_runtime"].identical)
 
 
 if __name__ == "__main__":

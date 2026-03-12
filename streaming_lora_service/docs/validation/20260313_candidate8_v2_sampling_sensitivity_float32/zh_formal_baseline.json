@@ -1,0 +1,66 @@
+{
+  "bundle_dir": "outputs\\lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best",
+  "case": {
+    "id": "zh_formal",
+    "text": "你好，欢迎使用 Qwen3-TTS 实时语音服务。这是一段用于端到端验证的正式女声测试。",
+    "language_type": "Chinese",
+    "instructions": "正式，平静，清晰。",
+    "voice": "yachiyo_candidate8_v2",
+    "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+    "seed": 1234
+  },
+  "variants": [
+    {
+      "name": "baseline_sample",
+      "kwargs": {},
+      "http_non_streaming_codec_steps": 106,
+      "streaming_sampler_codec_steps": 105,
+      "finish_reason": "eos",
+      "comparison": {
+        "reference_path": "http_non_streaming",
+        "candidate_path": "streaming_sampler_full_decode",
+        "reference_codec_steps": 106,
+        "candidate_codec_steps": 105,
+        "shared_prefix_steps": 83,
+        "first_divergence_step": 83,
+        "reference_step_tokens": [
+          1006,
+          303,
+          1431,
+          413,
+          281,
+          1148,
+          1299,
+          448,
+          138,
+          1421,
+          311,
+          134,
+          1582,
+          498,
+          1034,
+          425
+        ],
+        "candidate_step_tokens": [
+          1304,
+          303,
+          1431,
+          1320,
+          1143,
+          722,
+          369,
+          385,
+          103,
+          725,
+          129,
+          199,
+          1083,
+          1082,
+          154,
+          691
+        ],
+        "identical": false
+      }
+    }
+  ]
+}

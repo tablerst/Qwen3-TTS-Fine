@@ -105,6 +105,10 @@ class StreamingCustomVoiceGenerator:
     def sample_rate(self) -> int:
         return self.prompt.sample_rate
 
+    @staticmethod
+    def _prepare_next_token_logits(logits: torch.Tensor) -> torch.Tensor:
+        return logits[:, -1, :].to(dtype=torch.float32, device=logits.device, copy=True)
+
     def iter_audio_chunks(self) -> Iterator[bytes]:
         while not self.state.finished:
             chunk = self.step()
@@ -134,7 +138,7 @@ class StreamingCustomVoiceGenerator:
         self.state.past_key_values = step_outputs.past_key_values
         self.state.past_hidden = step_outputs.past_hidden
         self.state.generation_step = int(step_outputs.generation_step)
-        self.state.next_logits = step_outputs.logits[:, -1, :]
+        self.state.next_logits = self._prepare_next_token_logits(step_outputs.logits)
         self.state.trailing_text_hidden = step_outputs.trailing_text_hidden
         self.state.tts_pad_embed = step_outputs.tts_pad_embed
 
@@ -174,7 +178,7 @@ class StreamingCustomVoiceGenerator:
             generation_step=int(outputs.generation_step),
             trailing_text_hidden=outputs.trailing_text_hidden,
             tts_pad_embed=outputs.tts_pad_embed,
-            next_logits=outputs.logits[:, -1, :],
+            next_logits=self._prepare_next_token_logits(outputs.logits),
         )
 
     def _state_from_runtime_session(self, runtime_session: RuntimeSession) -> StreamingGenerationState:
@@ -186,7 +190,7 @@ class StreamingCustomVoiceGenerator:
             generation_step=state.generation_step,
             trailing_text_hidden=state.trailing_text_hidden,
             tts_pad_embed=state.tts_pad_embed,
-            next_logits=state.next_logits,
+            next_logits=state.next_logits.to(dtype=torch.float32, copy=True),
             generated_codes=list(state.generated_codes),
             sampled_tokens=list(state.sampled_tokens),
             finished=state.generation_finished,
@@ -296,7 +300,7 @@ class StreamingCustomVoiceGenerator:
         if logits.ndim != 2 or logits.shape[0] != 1:
             raise StreamingGenerationError(f"Expected logits with shape (1, vocab), got {tuple(logits.shape)}")
 
-        processed = logits.clone()
+        processed = logits.to(dtype=torch.float32, copy=True)
         if self.prompt.sampling.suppress_tokens:
             processed[:, list(self.prompt.sampling.suppress_tokens)] = -torch.inf
         self._apply_repetition_penalty(processed)
@@ -313,7 +317,7 @@ class StreamingCustomVoiceGenerator:
         penalty = self.prompt.sampling.repetition_penalty
         if penalty <= 1.0:
             return
-        for token_id in self.state.sampled_tokens:
+        for token_id in sorted(set(self.state.sampled_tokens)):
             current = logits[0, token_id]
             logits[0, token_id] = current / penalty if current >= 0 else current * penalty
 

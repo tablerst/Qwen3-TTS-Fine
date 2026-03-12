@@ -1,0 +1,66 @@
+{
+  "bundle_dir": "outputs\\lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best",
+  "case": {
+    "id": "ja_formal",
+    "text": "こんにちは。本日はリアルタイム音声サービスのエンドツーエンド検証を行っています。",
+    "language_type": "Japanese",
+    "instructions": "落ち着いて、丁寧に。",
+    "voice": "yachiyo_candidate8_v2",
+    "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+    "seed": 1234
+  },
+  "variants": [
+    {
+      "name": "baseline_sample",
+      "kwargs": {},
+      "http_non_streaming_codec_steps": 83,
+      "streaming_sampler_codec_steps": 83,
+      "finish_reason": "eos",
+      "comparison": {
+        "reference_path": "http_non_streaming",
+        "candidate_path": "streaming_sampler_full_decode",
+        "reference_codec_steps": 83,
+        "candidate_codec_steps": 83,
+        "shared_prefix_steps": 67,
+        "first_divergence_step": 67,
+        "reference_step_tokens": [
+          546,
+          53,
+          187,
+          1293,
+          1535,
+          850,
+          612,
+          1786,
+          1698,
+          512,
+          1406,
+          385,
+          530,
+          1384,
+          649,
+          1495
+        ],
+        "candidate_step_tokens": [
+          1129,
+          53,
+          187,
+          1293,
+          1535,
+          850,
+          612,
+          1786,
+          1698,
+          512,
+          1406,
+          385,
+          530,
+          1384,
+          649,
+          1495
+        ],
+        "identical": false
+      }
+    }
+  ]
+}

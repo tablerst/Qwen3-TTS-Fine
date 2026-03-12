@@ -75,6 +75,7 @@ class StepGeneratorTests(unittest.TestCase):
         self.assertEqual(qwen3tts._validated_speakers, ["inference_speaker"])
         self.assertEqual(synthesized.sample_rate, 24000)
         self.assertEqual(synthesized.codec_steps, 3)
+        self.assertEqual(synthesized.codec_tokens, ((1, 10, 11), (2, 12, 13), (3, 14, 15)))
         self.assertTrue(synthesized.audio_bytes)
         self.assertIsNotNone(synthesized.decode_step_range)
         self.assertTrue(synthesized.decode_step_range(0, 2))

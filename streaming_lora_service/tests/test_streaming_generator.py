@@ -108,6 +108,13 @@ class FakeTalker:
         return logits
 
 
+class FakeBFloat16Talker(FakeTalker):
+    def _build_logits(self, next_token: int, *, length: int) -> torch.Tensor:
+        logits = torch.full((1, length, self.config.vocab_size), -1000.0, dtype=torch.bfloat16)
+        logits[:, -1, next_token] = 1000.0
+        return logits
+
+
 class FakeModel:
     def __init__(self) -> None:
         talker_config = SimpleNamespace(
@@ -170,6 +177,12 @@ class FakeQwen3TTS:
         }
         merged.update(kwargs)
         return merged
+
+
+class FakeBFloat16Qwen3TTS(FakeQwen3TTS):
+    def __init__(self) -> None:
+        super().__init__()
+        self.model.talker = FakeBFloat16Talker(self.model.config.talker_config)
 
 
 class StreamingGeneratorTests(unittest.TestCase):
@@ -293,6 +306,44 @@ class StreamingGeneratorTests(unittest.TestCase):
         self.assertEqual(generator.metrics.generated_steps, 2)
         self.assertEqual(generator.metrics.finish_reason, "length")
         self.assertTrue(generator.state.finished)
+
+    def test_sampling_logits_are_upcast_to_float32(self) -> None:
+        qwen3tts = FakeBFloat16Qwen3TTS()
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，精度检查。",
+            speaker="inference_speaker",
+            language="Chinese",
+            chunk_steps=2,
+            left_context_steps=1,
+        )
+
+        self.assertEqual(generator.state.next_logits.dtype, torch.float32)
+        generator.step()
+        self.assertEqual(generator.state.next_logits.dtype, torch.float32)
+
+    def test_repetition_penalty_is_applied_once_per_unique_token(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，重复惩罚。",
+            speaker="inference_speaker",
+            language="Chinese",
+            chunk_steps=2,
+            left_context_steps=1,
+            repetition_penalty=2.0,
+            do_sample=False,
+        )
+
+        generator.state.sampled_tokens = [11, 11, 12]
+        logits = torch.zeros((1, qwen3tts.model.config.talker_config.vocab_size), dtype=torch.float32)
+        logits[0, 11] = 8.0
+        logits[0, 12] = -8.0
+
+        generator._apply_repetition_penalty(logits)
+
+        self.assertEqual(float(logits[0, 11]), 4.0)
+        self.assertEqual(float(logits[0, 12]), -16.0)
 
 
 if __name__ == "__main__":

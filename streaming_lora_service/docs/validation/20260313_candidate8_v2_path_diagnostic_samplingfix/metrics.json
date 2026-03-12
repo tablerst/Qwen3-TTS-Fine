@@ -1,0 +1,271 @@
+{
+  "config": {
+    "bundle_dir": "outputs\\lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best",
+    "public_model_alias": "qwen3-tts-flash-realtime",
+    "default_voice_alias": "yachiyo_candidate8_v2",
+    "voice_registry_file": "streaming_lora_service\\configs\\voice_registry.candidate8_v2.json",
+    "chunk_steps": 4,
+    "left_context_steps": 25,
+    "samples_per_step": 1920,
+    "max_stream_to_offline_ratio": 1.5,
+    "seed": 1234
+  },
+  "summary": {
+    "case_count": 2,
+    "warning_count": 0,
+    "warning_case_count": 0,
+    "case_ids_with_warnings": []
+  },
+  "cases": [
+    {
+      "case": {
+        "id": "zh_formal",
+        "text": "你好，欢迎使用 Qwen3-TTS 实时语音服务。这是一段用于端到端验证的正式女声测试。",
+        "language_type": "Chinese",
+        "instructions": "正式，平静，清晰。",
+        "voice": null
+      },
+      "offline_non_streaming": {
+        "path": "offline_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 376320,
+        "duration_s": 7.84,
+        "elapsed_ms": 26778.54,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\zh_formal\\offline_non_streaming.wav"
+      },
+      "http_non_streaming": {
+        "path": "http_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 407040,
+        "duration_s": 8.48,
+        "elapsed_ms": 33430.47,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": 106,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\zh_formal\\http_non_streaming.wav"
+      },
+      "streaming_sampler_full_decode": {
+        "path": "streaming_sampler_full_decode",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 407040,
+        "duration_s": 8.48,
+        "elapsed_ms": 28394.58,
+        "ttfb_ms": 1117.21,
+        "delta_chunks": 27,
+        "generated_steps": 106,
+        "emitted_chunks": 27,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": 106,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\zh_formal\\streaming_sampler_full_decode.wav"
+      },
+      "http_streaming_runtime": {
+        "path": "http_streaming_runtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 407040,
+        "duration_s": 8.48,
+        "elapsed_ms": 28027.19,
+        "ttfb_ms": 1136.96,
+        "delta_chunks": 27,
+        "generated_steps": 106,
+        "emitted_chunks": 27,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\zh_formal\\http_streaming_runtime.wav"
+      },
+      "websocket_realtime": {
+        "path": "websocket_realtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 407040,
+        "duration_s": 8.48,
+        "elapsed_ms": 27275.57,
+        "ttfb_ms": 1125.74,
+        "delta_chunks": 27,
+        "generated_steps": 106,
+        "emitted_chunks": 27,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\zh_formal\\websocket_realtime.wav"
+      },
+      "warnings": [],
+      "codec_diagnostics": {
+        "http_non_vs_streaming_sampler_full_decode": {
+          "reference_path": "http_non_streaming",
+          "candidate_path": "streaming_sampler_full_decode",
+          "reference_codec_steps": 106,
+          "candidate_codec_steps": 106,
+          "shared_prefix_steps": 106,
+          "first_divergence_step": null,
+          "reference_step_tokens": null,
+          "candidate_step_tokens": null,
+          "identical": true
+        },
+        "streaming_sampler_full_decode_vs_http_streaming_runtime": {
+          "reference_path": "streaming_sampler_full_decode",
+          "candidate_path": "http_streaming_runtime",
+          "reference_codec_steps": 106,
+          "candidate_codec_steps": 106,
+          "shared_prefix_steps": 106,
+          "first_divergence_step": null,
+          "reference_step_tokens": null,
+          "candidate_step_tokens": null,
+          "identical": true
+        },
+        "http_streaming_runtime_vs_websocket_realtime": {
+          "reference_path": "http_streaming_runtime",
+          "candidate_path": "websocket_realtime",
+          "reference_codec_steps": 106,
+          "candidate_codec_steps": 106,
+          "shared_prefix_steps": 106,
+          "first_divergence_step": null,
+          "reference_step_tokens": null,
+          "candidate_step_tokens": null,
+          "identical": true
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "ja_formal",
+        "text": "こんにちは。本日はリアルタイム音声サービスのエンドツーエンド検証を行っています。",
+        "language_type": "Japanese",
+        "instructions": "落ち着いて、丁寧に。",
+        "voice": null
+      },
+      "offline_non_streaming": {
+        "path": "offline_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 307200,
+        "duration_s": 6.4,
+        "elapsed_ms": 20869.91,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\ja_formal\\offline_non_streaming.wav"
+      },
+      "http_non_streaming": {
+        "path": "http_non_streaming",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 318720,
+        "duration_s": 6.64,
+        "elapsed_ms": 21721.51,
+        "ttfb_ms": null,
+        "delta_chunks": null,
+        "generated_steps": null,
+        "emitted_chunks": null,
+        "first_emitted_step": null,
+        "finish_reason": null,
+        "codec_steps": 83,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\ja_formal\\http_non_streaming.wav"
+      },
+      "streaming_sampler_full_decode": {
+        "path": "streaming_sampler_full_decode",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 318720,
+        "duration_s": 6.64,
+        "elapsed_ms": 21162.24,
+        "ttfb_ms": 1006.41,
+        "delta_chunks": 21,
+        "generated_steps": 83,
+        "emitted_chunks": 21,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": 83,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\ja_formal\\streaming_sampler_full_decode.wav"
+      },
+      "http_streaming_runtime": {
+        "path": "http_streaming_runtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 318720,
+        "duration_s": 6.64,
+        "elapsed_ms": 21882.49,
+        "ttfb_ms": 1090.64,
+        "delta_chunks": 21,
+        "generated_steps": 83,
+        "emitted_chunks": 21,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\ja_formal\\http_streaming_runtime.wav"
+      },
+      "websocket_realtime": {
+        "path": "websocket_realtime",
+        "sample_rate": 24000,
+        "channels": 1,
+        "total_audio_bytes": 318720,
+        "duration_s": 6.64,
+        "elapsed_ms": 21536.82,
+        "ttfb_ms": 1101.85,
+        "delta_chunks": 21,
+        "generated_steps": 83,
+        "emitted_chunks": 21,
+        "first_emitted_step": 4,
+        "finish_reason": "eos",
+        "codec_steps": null,
+        "output_wav_path": "streaming_lora_service\\docs\\validation\\20260313_candidate8_v2_path_diagnostic_samplingfix\\ja_formal\\websocket_realtime.wav"
+      },
+      "warnings": [],
+      "codec_diagnostics": {
+        "http_non_vs_streaming_sampler_full_decode": {
+          "reference_path": "http_non_streaming",
+          "candidate_path": "streaming_sampler_full_decode",
+          "reference_codec_steps": 83,
+          "candidate_codec_steps": 83,
+          "shared_prefix_steps": 83,
+          "first_divergence_step": null,
+          "reference_step_tokens": null,
+          "candidate_step_tokens": null,
+          "identical": true
+        },
+        "streaming_sampler_full_decode_vs_http_streaming_runtime": {
+          "reference_path": "streaming_sampler_full_decode",
+          "candidate_path": "http_streaming_runtime",
+          "reference_codec_steps": 83,
+          "candidate_codec_steps": 83,
+          "shared_prefix_steps": 83,
+          "first_divergence_step": null,
+          "reference_step_tokens": null,
+          "candidate_step_tokens": null,
+          "identical": true
+        },
+        "http_streaming_runtime_vs_websocket_realtime": {
+          "reference_path": "http_streaming_runtime",
+          "candidate_path": "websocket_realtime",
+          "reference_codec_steps": 83,
+          "candidate_codec_steps": 83,
+          "shared_prefix_steps": 83,
+          "first_divergence_step": null,
+          "reference_step_tokens": null,
+          "candidate_step_tokens": null,
+          "identical": true
+        }
+      }
+    }
+  ]
+}

@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import argparse
 import base64
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 import time
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 import torch
 
 from .app.audio_utils import float_audio_to_pcm16le_bytes, pcm16le_bytes_to_wav_bytes
 from .app.qwen_compat_ws import QwenRealtimeProtocolAdapter
 from .app.server import BundleSpeechService, RealtimeServerConfig, build_dependencies
+from .app.streaming_generator import StreamingCustomVoiceGenerator
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,20 @@ class PathMetrics:
 class CollectedPathResult:
     metrics: PathMetrics
     audio_bytes: bytes
+    codec_tokens: tuple[tuple[int, ...], ...] | None = None
+
+
+@dataclass(frozen=True)
+class CodecComparison:
+    reference_path: str
+    candidate_path: str
+    reference_codec_steps: int
+    candidate_codec_steps: int
+    shared_prefix_steps: int
+    first_divergence_step: int | None
+    reference_step_tokens: list[int] | None
+    candidate_step_tokens: list[int] | None
+    identical: bool
 
 
 @dataclass
@@ -56,6 +71,9 @@ class ValidationCaseResult:
     http_streaming_runtime: PathMetrics
     websocket_realtime: PathMetrics
     warnings: list[str]
+    streaming_sampler_full_decode: PathMetrics | None = None
+    codec_diagnostics: dict[str, CodecComparison] = field(default_factory=dict)
+    _artifacts: dict[str, CollectedPathResult] = field(default_factory=dict, repr=False)
 
 
 DEFAULT_VALIDATION_CASES: tuple[ValidationCase, ...] = (
@@ -151,6 +169,8 @@ def collect_case_result(
     _set_torch_seed(seed)
     http_non_stream = collect_http_non_streaming(service, case)
     _set_torch_seed(seed)
+    sampler_full_decode = collect_streaming_sampler_full_decode(service, case)
+    _set_torch_seed(seed)
     http_stream = collect_http_streaming_runtime(service, case)
     _set_torch_seed(seed)
     websocket = collect_websocket_realtime(service, case)
@@ -158,6 +178,7 @@ def collect_case_result(
         case=case,
         offline_non_streaming=offline.metrics,
         http_non_streaming=http_non_stream.metrics,
+        streaming_sampler_full_decode=sampler_full_decode.metrics,
         http_streaming_runtime=http_stream.metrics,
         websocket_realtime=websocket.metrics,
         warnings=[],
@@ -166,9 +187,11 @@ def collect_case_result(
     result._artifacts = {
         "offline_non_streaming": offline,
         "http_non_streaming": http_non_stream,
+        "streaming_sampler_full_decode": sampler_full_decode,
         "http_streaming_runtime": http_stream,
         "websocket_realtime": websocket,
     }
+    result.codec_diagnostics = build_codec_diagnostics(result._artifacts)
     return result
 
 
@@ -212,9 +235,7 @@ def run_validation_suite(
         },
         "summary": summary,
         "cases": [
-            {
-                **asdict(_strip_case_result(result)),
-            }
+            _serialize_case_result(result)
             for result in results
         ],
     }
@@ -277,6 +298,68 @@ def collect_http_non_streaming(service: BundleSpeechService, case: ValidationCas
             codec_steps=synthesized.codec_steps,
         ),
         audio_bytes=synthesized.audio_bytes,
+        codec_tokens=synthesized.codec_tokens,
+    )
+
+
+def collect_streaming_sampler_full_decode(service: BundleSpeechService, case: ValidationCase) -> CollectedPathResult:
+    voice_alias = case.voice or service.default_voice_alias
+    profile = service.deps.voice_registry.resolve(voice_alias, model=service.public_model_alias)
+    session = service.build_runtime_session(
+        model=service.public_model_alias,
+        voice=voice_alias,
+        language_type=case.language_type,
+        instructions=case.instructions,
+        session_id=f"validation_sampler_full_{case.id}",
+    )
+    generator = StreamingCustomVoiceGenerator(
+        service.deps.loaded_bundle.qwen3tts,
+        text=case.text,
+        language=case.language_type,
+        speaker=profile.speaker_name,
+        instruct=case.instructions or None,
+        runtime_session=session,
+        chunk_steps=service.deps.chunk_steps,
+        left_context_steps=service.deps.left_context_steps,
+    )
+
+    started = time.perf_counter()
+    first_chunk_at: float | None = None
+    for chunk in generator.iter_audio_chunks():
+        if first_chunk_at is None and chunk:
+            first_chunk_at = time.perf_counter()
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    sample_rate = int(service.deps.loaded_bundle.qwen3tts.model.speech_tokenizer.get_output_sample_rate())
+    generated_codes = [code.detach() for code in generator.state.generated_codes]
+    codec_tokens = normalize_codec_tokens(generated_codes)
+    if generated_codes:
+        wavs, decoded_sample_rate = service.deps.loaded_bundle.qwen3tts.model.speech_tokenizer.decode(
+            [{"audio_codes": torch.stack(generated_codes, dim=0)}]
+        )
+        audio_bytes = float_audio_to_pcm16le_bytes(wavs[0])
+        sample_rate = int(decoded_sample_rate)
+    else:
+        audio_bytes = b""
+
+    return CollectedPathResult(
+        metrics=PathMetrics(
+            path="streaming_sampler_full_decode",
+            sample_rate=sample_rate,
+            channels=1,
+            total_audio_bytes=len(audio_bytes),
+            duration_s=audio_duration_seconds(audio_bytes, sample_rate=sample_rate, channels=1),
+            elapsed_ms=round(elapsed_ms, 2),
+            ttfb_ms=round((first_chunk_at - started) * 1000.0, 2) if first_chunk_at is not None else None,
+            delta_chunks=generator.metrics.emitted_chunks,
+            generated_steps=generator.metrics.generated_steps,
+            emitted_chunks=generator.metrics.emitted_chunks,
+            first_emitted_step=generator.metrics.first_emitted_step,
+            finish_reason=generator.metrics.finish_reason,
+            codec_steps=len(generated_codes),
+        ),
+        audio_bytes=audio_bytes,
+        codec_tokens=codec_tokens,
     )
 
 
@@ -300,6 +383,7 @@ def collect_http_streaming_runtime(service: BundleSpeechService, case: Validatio
     audio_bytes = b"".join(chunks)
     sample_rate = int(service.deps.loaded_bundle.qwen3tts.model.speech_tokenizer.get_output_sample_rate())
     metrics = dict(session.state.last_generation_metrics)
+    codec_tokens = normalize_codec_tokens(session.state.generated_codes)
     return CollectedPathResult(
         metrics=PathMetrics(
             path="http_streaming_runtime",
@@ -316,6 +400,7 @@ def collect_http_streaming_runtime(service: BundleSpeechService, case: Validatio
             finish_reason=metrics.get("finish_reason"),
         ),
         audio_bytes=audio_bytes,
+        codec_tokens=codec_tokens,
     )
 
 
@@ -356,6 +441,11 @@ def collect_websocket_realtime(service: BundleSpeechService, case: ValidationCas
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     audio_bytes = b"".join(chunks)
     metrics = dict(adapter.current_session.state.last_generation_metrics) if adapter.current_session is not None else {}
+    codec_tokens = (
+        normalize_codec_tokens(adapter.current_session.state.generated_codes)
+        if adapter.current_session is not None
+        else None
+    )
     return CollectedPathResult(
         metrics=PathMetrics(
             path="websocket_realtime",
@@ -372,13 +462,100 @@ def collect_websocket_realtime(service: BundleSpeechService, case: ValidationCas
             finish_reason=metrics.get("finish_reason"),
         ),
         audio_bytes=audio_bytes,
+        codec_tokens=codec_tokens,
     )
 
 
-def _strip_case_result(result: ValidationCaseResult) -> ValidationCaseResult:
-    if hasattr(result, "_artifacts"):
-        delattr(result, "_artifacts")
-    return result
+def _serialize_case_result(result: ValidationCaseResult) -> dict[str, Any]:
+    return {
+        "case": asdict(result.case),
+        "offline_non_streaming": asdict(result.offline_non_streaming),
+        "http_non_streaming": asdict(result.http_non_streaming),
+        "streaming_sampler_full_decode": (
+            asdict(result.streaming_sampler_full_decode)
+            if result.streaming_sampler_full_decode is not None
+            else None
+        ),
+        "http_streaming_runtime": asdict(result.http_streaming_runtime),
+        "websocket_realtime": asdict(result.websocket_realtime),
+        "warnings": list(result.warnings),
+        "codec_diagnostics": {
+            key: asdict(value)
+            for key, value in result.codec_diagnostics.items()
+        },
+    }
+
+
+def build_codec_diagnostics(artifacts: dict[str, CollectedPathResult]) -> dict[str, CodecComparison]:
+    diagnostics: dict[str, CodecComparison] = {}
+    pair_specs = (
+        ("http_non_vs_streaming_sampler_full_decode", "http_non_streaming", "streaming_sampler_full_decode"),
+        ("streaming_sampler_full_decode_vs_http_streaming_runtime", "streaming_sampler_full_decode", "http_streaming_runtime"),
+        ("http_streaming_runtime_vs_websocket_realtime", "http_streaming_runtime", "websocket_realtime"),
+    )
+    for key, reference_name, candidate_name in pair_specs:
+        reference = artifacts.get(reference_name)
+        candidate = artifacts.get(candidate_name)
+        if reference is None or candidate is None:
+            continue
+        comparison = compare_codec_sequences(
+            reference_name,
+            reference.codec_tokens,
+            candidate_name,
+            candidate.codec_tokens,
+        )
+        if comparison is not None:
+            diagnostics[key] = comparison
+    return diagnostics
+
+
+def compare_codec_sequences(
+    reference_path: str,
+    reference_tokens: Sequence[Sequence[int]] | None,
+    candidate_path: str,
+    candidate_tokens: Sequence[Sequence[int]] | None,
+) -> CodecComparison | None:
+    if reference_tokens is None or candidate_tokens is None:
+        return None
+
+    shared_prefix_steps = 0
+    for reference_step, candidate_step in zip(reference_tokens, candidate_tokens):
+        if tuple(reference_step) != tuple(candidate_step):
+            break
+        shared_prefix_steps += 1
+
+    identical = (
+        len(reference_tokens) == len(candidate_tokens)
+        and shared_prefix_steps == len(reference_tokens)
+    )
+    first_divergence_step = None if identical else shared_prefix_steps
+
+    reference_step_tokens = None
+    candidate_step_tokens = None
+    if first_divergence_step is not None:
+        if first_divergence_step < len(reference_tokens):
+            reference_step_tokens = [int(item) for item in reference_tokens[first_divergence_step]]
+        if first_divergence_step < len(candidate_tokens):
+            candidate_step_tokens = [int(item) for item in candidate_tokens[first_divergence_step]]
+
+    return CodecComparison(
+        reference_path=reference_path,
+        candidate_path=candidate_path,
+        reference_codec_steps=len(reference_tokens),
+        candidate_codec_steps=len(candidate_tokens),
+        shared_prefix_steps=shared_prefix_steps,
+        first_divergence_step=first_divergence_step,
+        reference_step_tokens=reference_step_tokens,
+        candidate_step_tokens=candidate_step_tokens,
+        identical=identical,
+    )
+
+
+def normalize_codec_tokens(codec_steps: Sequence[torch.Tensor]) -> tuple[tuple[int, ...], ...]:
+    return tuple(
+        tuple(int(item) for item in step.detach().cpu().tolist())
+        for step in codec_steps
+    )
 
 
 def _write_case_artifacts(output_dir: Path, result: ValidationCaseResult) -> None:

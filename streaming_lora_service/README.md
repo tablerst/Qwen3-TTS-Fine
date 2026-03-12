@@ -265,10 +265,11 @@ python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8
 
 ## 新增：质量回归对照工具
 
-当前仓库已经提供一套可直接运行的三路对照工具，用来比较：
+当前仓库已经提供一套可直接运行的诊断对照工具，用来比较：
 
 - 离线 `generate_custom_voice(...)`
 - 服务侧 HTTP 非流式路径
+- `streaming_sampler_full_decode` 诊断路径（与流式 sampler 相同 codec 生成，但在末尾整段 full decode）
 - 服务侧真流式 runtime / WebSocket Realtime 路径
 
 可执行方式：
@@ -285,8 +286,10 @@ python -m streaming_lora_service.quality_regression --bundle_dir <path_to_bundle
 
 工具会输出：
 
-- 三路音频的 `duration_s / total_audio_bytes / elapsed_ms`
+- 多路音频的 `duration_s / total_audio_bytes / elapsed_ms`
 - 流式路径的 `ttfb_ms / delta_chunks / generated_steps / finish_reason`
+- 用于拆分“流式采样分叉”和“增量解码损耗”的附加诊断 WAV
+- codec 级诊断：`shared_prefix_steps / first_divergence_step / step_tokens`
 - 自动告警：如流式时长显著高于离线、`finish_reason != eos`、HTTP/WS 输出大小不一致
 - 每个 case 对应的 WAV 文件与汇总 `metrics.json`
 

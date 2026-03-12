@@ -1,0 +1,394 @@
+{
+  "config": {
+    "bundle_dir": "outputs\\lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best",
+    "voice_registry_file": "streaming_lora_service\\configs\\voice_registry.candidate8_v2.json",
+    "default_voice_alias": "yachiyo_candidate8_v2",
+    "public_model_alias": "qwen3-tts-flash-realtime",
+    "seed": 1234,
+    "variants": [
+      {
+        "name": "baseline",
+        "kwargs": {}
+      },
+      {
+        "name": "rep1_0",
+        "kwargs": {
+          "repetition_penalty": 1.0
+        }
+      },
+      {
+        "name": "greedy",
+        "kwargs": {
+          "do_sample": false
+        }
+      },
+      {
+        "name": "greedy_rep1_0",
+        "kwargs": {
+          "do_sample": false,
+          "repetition_penalty": 1.0
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case": {
+        "id": "zh_formal",
+        "text": "你好，欢迎使用 Qwen3-TTS 实时语音服务。这是一段用于端到端验证的正式女声测试。",
+        "language_type": "Chinese",
+        "instructions": "正式，平静，清晰。",
+        "voice_alias": "yachiyo_candidate8_v2",
+        "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2"
+      },
+      "variants": [
+        {
+          "name": "baseline",
+          "kwargs": {},
+          "http_non_streaming": {
+            "codec_steps": 106,
+            "duration_s": 8.48,
+            "elapsed_ms": 67298.9
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 99,
+            "duration_s": 7.92,
+            "elapsed_ms": 54461.82
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 7,
+            "first_divergence_step": 7,
+            "reference_codec_steps": 106,
+            "candidate_codec_steps": 99,
+            "identical": false,
+            "reference_step_tokens": [
+              1681,
+              1540,
+              1723,
+              204,
+              1097,
+              1668,
+              1980,
+              1759,
+              2033,
+              484,
+              802,
+              1412,
+              904,
+              284,
+              1272,
+              1890
+            ],
+            "candidate_step_tokens": [
+              1530,
+              1540,
+              1723,
+              204,
+              1097,
+              1668,
+              1980,
+              1759,
+              2033,
+              484,
+              802,
+              1412,
+              904,
+              284,
+              1272,
+              1890
+            ]
+          }
+        },
+        {
+          "name": "rep1_0",
+          "kwargs": {
+            "repetition_penalty": 1.0
+          },
+          "http_non_streaming": {
+            "codec_steps": 95,
+            "duration_s": 7.6,
+            "elapsed_ms": 49991.98
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 99,
+            "duration_s": 7.92,
+            "elapsed_ms": 44377.46
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 7,
+            "first_divergence_step": 7,
+            "reference_codec_steps": 95,
+            "candidate_codec_steps": 99,
+            "identical": false,
+            "reference_step_tokens": [
+              1681,
+              1540,
+              1723,
+              204,
+              1097,
+              1668,
+              1980,
+              1759,
+              2033,
+              484,
+              802,
+              1412,
+              904,
+              284,
+              1272,
+              1890
+            ],
+            "candidate_step_tokens": [
+              1530,
+              1540,
+              1723,
+              204,
+              1097,
+              1668,
+              1980,
+              1759,
+              2033,
+              484,
+              802,
+              1412,
+              904,
+              284,
+              1272,
+              1890
+            ]
+          }
+        },
+        {
+          "name": "greedy",
+          "kwargs": {
+            "do_sample": false
+          },
+          "http_non_streaming": {
+            "codec_steps": 94,
+            "duration_s": 7.52,
+            "elapsed_ms": 38187.83
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 94,
+            "duration_s": 7.52,
+            "elapsed_ms": 36808.35
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 94,
+            "first_divergence_step": null,
+            "reference_codec_steps": 94,
+            "candidate_codec_steps": 94,
+            "identical": true,
+            "reference_step_tokens": null,
+            "candidate_step_tokens": null
+          }
+        },
+        {
+          "name": "greedy_rep1_0",
+          "kwargs": {
+            "do_sample": false,
+            "repetition_penalty": 1.0
+          },
+          "http_non_streaming": {
+            "codec_steps": 104,
+            "duration_s": 8.32,
+            "elapsed_ms": 33731.97
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 104,
+            "duration_s": 8.32,
+            "elapsed_ms": 28354.4
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 104,
+            "first_divergence_step": null,
+            "reference_codec_steps": 104,
+            "candidate_codec_steps": 104,
+            "identical": true,
+            "reference_step_tokens": null,
+            "candidate_step_tokens": null
+          }
+        }
+      ]
+    },
+    {
+      "case": {
+        "id": "ja_formal",
+        "text": "こんにちは。本日はリアルタイム音声サービスのエンドツーエンド検証を行っています。",
+        "language_type": "Japanese",
+        "instructions": "落ち着いて、丁寧に。",
+        "voice_alias": "yachiyo_candidate8_v2",
+        "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2"
+      },
+      "variants": [
+        {
+          "name": "baseline",
+          "kwargs": {},
+          "http_non_streaming": {
+            "codec_steps": 83,
+            "duration_s": 6.64,
+            "elapsed_ms": 23932.87
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 83,
+            "duration_s": 6.64,
+            "elapsed_ms": 24895.39
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 67,
+            "first_divergence_step": 67,
+            "reference_codec_steps": 83,
+            "candidate_codec_steps": 83,
+            "identical": false,
+            "reference_step_tokens": [
+              546,
+              53,
+              187,
+              1293,
+              1535,
+              850,
+              612,
+              1786,
+              1698,
+              512,
+              1406,
+              385,
+              530,
+              1384,
+              649,
+              1495
+            ],
+            "candidate_step_tokens": [
+              1129,
+              53,
+              187,
+              1293,
+              1535,
+              850,
+              612,
+              1786,
+              1698,
+              512,
+              1406,
+              385,
+              530,
+              1384,
+              649,
+              1495
+            ]
+          }
+        },
+        {
+          "name": "rep1_0",
+          "kwargs": {
+            "repetition_penalty": 1.0
+          },
+          "http_non_streaming": {
+            "codec_steps": 80,
+            "duration_s": 6.4,
+            "elapsed_ms": 27317.1
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 80,
+            "duration_s": 6.4,
+            "elapsed_ms": 40449.64
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 65,
+            "first_divergence_step": 65,
+            "reference_codec_steps": 80,
+            "candidate_codec_steps": 80,
+            "identical": false,
+            "reference_step_tokens": [
+              1166,
+              185,
+              373,
+              1564,
+              577,
+              240,
+              1814,
+              1742,
+              1207,
+              35,
+              1156,
+              848,
+              504,
+              1724,
+              490,
+              226
+            ],
+            "candidate_step_tokens": [
+              1200,
+              185,
+              373,
+              1564,
+              860,
+              240,
+              1843,
+              1405,
+              330,
+              556,
+              392,
+              100,
+              413,
+              76,
+              1525,
+              534
+            ]
+          }
+        },
+        {
+          "name": "greedy",
+          "kwargs": {
+            "do_sample": false
+          },
+          "http_non_streaming": {
+            "codec_steps": 77,
+            "duration_s": 6.16,
+            "elapsed_ms": 29418.07
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 77,
+            "duration_s": 6.16,
+            "elapsed_ms": 36725.35
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 77,
+            "first_divergence_step": null,
+            "reference_codec_steps": 77,
+            "candidate_codec_steps": 77,
+            "identical": true,
+            "reference_step_tokens": null,
+            "candidate_step_tokens": null
+          }
+        },
+        {
+          "name": "greedy_rep1_0",
+          "kwargs": {
+            "do_sample": false,
+            "repetition_penalty": 1.0
+          },
+          "http_non_streaming": {
+            "codec_steps": 81,
+            "duration_s": 6.48,
+            "elapsed_ms": 27897.9
+          },
+          "streaming_sampler_full_decode": {
+            "codec_steps": 81,
+            "duration_s": 6.48,
+            "elapsed_ms": 30324.57
+          },
+          "codec_comparison": {
+            "shared_prefix_steps": 81,
+            "first_divergence_step": null,
+            "reference_codec_steps": 81,
+            "candidate_codec_steps": 81,
+            "identical": true,
+            "reference_step_tokens": null,
+            "candidate_step_tokens": null
+          }
+        }
+      ]
+    }
+  ]
+}

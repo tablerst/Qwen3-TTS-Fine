@@ -92,3 +92,4 @@ class SynthesizedAudio:
     channels: int = 1
     codec_steps: int | None = None
     decode_step_range: Callable[[int, int], bytes] | None = None
+    codec_tokens: tuple[tuple[int, ...], ...] | None = None

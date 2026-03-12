@@ -49,6 +49,7 @@ def generate_custom_voice_step_aware(
     talker_codes = talker_codes_list[0]
     wavs, sample_rate = qwen3tts.model.speech_tokenizer.decode([{"audio_codes": talker_codes}])
     audio_bytes = float_audio_to_pcm16le_bytes(wavs[0])
+    codec_tokens = tuple(tuple(int(item) for item in row) for row in talker_codes.tolist())
 
     def decode_step_range(start_step: int, end_step: int) -> bytes:
         if start_step < 0 or end_step < start_step:
@@ -65,4 +66,5 @@ def generate_custom_voice_step_aware(
         channels=1,
         codec_steps=int(talker_codes.shape[0]),
         decode_step_range=decode_step_range,
+        codec_tokens=codec_tokens,
     )
