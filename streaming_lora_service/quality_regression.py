@@ -8,9 +8,10 @@ from pathlib import Path
 import time
 from typing import Any, Iterable, Sequence
 
+import numpy as np
 import torch
 
-from .app.audio_utils import float_audio_to_pcm16le_bytes, pcm16le_bytes_to_wav_bytes
+from .app.audio_utils import float_audio_to_pcm16le_bytes, pcm16le_bytes_to_float_audio, pcm16le_bytes_to_wav_bytes
 from .app.qwen_compat_ws import QwenRealtimeProtocolAdapter
 from .app.server import BundleSpeechService, RealtimeServerConfig, build_dependencies
 from .app.streaming_generator import StreamingCustomVoiceGenerator
@@ -48,6 +49,7 @@ class CollectedPathResult:
     metrics: PathMetrics
     audio_bytes: bytes
     codec_tokens: tuple[tuple[int, ...], ...] | None = None
+    chunk_boundaries_samples: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,31 @@ class CodecComparison:
     identical: bool
 
 
+@dataclass(frozen=True)
+class BoundaryWindowComparison:
+    boundary_sample: int
+    start_sample: int
+    end_sample: int
+    mean_abs_diff: float
+    rms_diff: float
+    max_abs_diff: float
+
+
+@dataclass(frozen=True)
+class WaveformComparison:
+    reference_path: str
+    candidate_path: str
+    compared_samples: int
+    reference_total_samples: int
+    candidate_total_samples: int
+    length_delta_samples: int
+    mean_abs_diff: float
+    rms_diff: float
+    max_abs_diff: float
+    pearson_corr: float
+    boundary_windows: list[BoundaryWindowComparison] = field(default_factory=list)
+
+
 @dataclass
 class ValidationCaseResult:
     case: ValidationCase
@@ -73,6 +100,7 @@ class ValidationCaseResult:
     warnings: list[str]
     streaming_sampler_full_decode: PathMetrics | None = None
     codec_diagnostics: dict[str, CodecComparison] = field(default_factory=dict)
+    waveform_diagnostics: dict[str, WaveformComparison] = field(default_factory=dict)
     _artifacts: dict[str, CollectedPathResult] = field(default_factory=dict, repr=False)
 
 
@@ -192,6 +220,10 @@ def collect_case_result(
         "websocket_realtime": websocket,
     }
     result.codec_diagnostics = build_codec_diagnostics(result._artifacts)
+    result.waveform_diagnostics = build_waveform_diagnostics(
+        result._artifacts,
+        boundary_window_samples=max(1, service.deps.samples_per_step),
+    )
     return result
 
 
@@ -229,6 +261,8 @@ def run_validation_suite(
             "voice_registry_file": str(config.voice_registry_file) if config.voice_registry_file else None,
             "chunk_steps": config.chunk_steps,
             "left_context_steps": config.left_context_steps,
+            "first_chunk_steps": config.first_chunk_steps,
+            "crossfade_samples": config.crossfade_samples,
             "samples_per_step": config.samples_per_step,
             "max_stream_to_offline_ratio": max_stream_to_offline_ratio,
             "seed": seed,
@@ -321,13 +355,16 @@ def collect_streaming_sampler_full_decode(service: BundleSpeechService, case: Va
         runtime_session=session,
         chunk_steps=service.deps.chunk_steps,
         left_context_steps=service.deps.left_context_steps,
+        first_chunk_steps=service.deps.first_chunk_steps,
     )
 
     started = time.perf_counter()
     first_chunk_at: float | None = None
+    streamed_chunks: list[bytes] = []
     for chunk in generator.iter_audio_chunks():
         if first_chunk_at is None and chunk:
             first_chunk_at = time.perf_counter()
+        streamed_chunks.append(chunk)
     elapsed_ms = (time.perf_counter() - started) * 1000.0
 
     sample_rate = int(service.deps.loaded_bundle.qwen3tts.model.speech_tokenizer.get_output_sample_rate())
@@ -360,6 +397,7 @@ def collect_streaming_sampler_full_decode(service: BundleSpeechService, case: Va
         ),
         audio_bytes=audio_bytes,
         codec_tokens=codec_tokens,
+        chunk_boundaries_samples=build_chunk_boundaries(streamed_chunks, channels=1),
     )
 
 
@@ -401,6 +439,7 @@ def collect_http_streaming_runtime(service: BundleSpeechService, case: Validatio
         ),
         audio_bytes=audio_bytes,
         codec_tokens=codec_tokens,
+        chunk_boundaries_samples=build_chunk_boundaries(chunks, channels=1),
     )
 
 
@@ -463,6 +502,7 @@ def collect_websocket_realtime(service: BundleSpeechService, case: ValidationCas
         ),
         audio_bytes=audio_bytes,
         codec_tokens=codec_tokens,
+        chunk_boundaries_samples=build_chunk_boundaries(chunks, channels=1),
     )
 
 
@@ -482,6 +522,10 @@ def _serialize_case_result(result: ValidationCaseResult) -> dict[str, Any]:
         "codec_diagnostics": {
             key: asdict(value)
             for key, value in result.codec_diagnostics.items()
+        },
+        "waveform_diagnostics": {
+            key: asdict(value)
+            for key, value in result.waveform_diagnostics.items()
         },
     }
 
@@ -506,6 +550,34 @@ def build_codec_diagnostics(artifacts: dict[str, CollectedPathResult]) -> dict[s
         )
         if comparison is not None:
             diagnostics[key] = comparison
+    return diagnostics
+
+
+def build_waveform_diagnostics(
+    artifacts: dict[str, CollectedPathResult],
+    *,
+    boundary_window_samples: int,
+) -> dict[str, WaveformComparison]:
+    diagnostics: dict[str, WaveformComparison] = {}
+    pair_specs = (
+        ("http_non_vs_streaming_sampler_full_decode", "http_non_streaming", "streaming_sampler_full_decode"),
+        ("streaming_sampler_full_decode_vs_http_streaming_runtime", "streaming_sampler_full_decode", "http_streaming_runtime"),
+        ("http_streaming_runtime_vs_websocket_realtime", "http_streaming_runtime", "websocket_realtime"),
+    )
+    for key, reference_name, candidate_name in pair_specs:
+        reference = artifacts.get(reference_name)
+        candidate = artifacts.get(candidate_name)
+        if reference is None or candidate is None:
+            continue
+        diagnostics[key] = compare_waveforms(
+            reference_name,
+            reference.audio_bytes,
+            candidate_name,
+            candidate.audio_bytes,
+            channels=max(reference.metrics.channels, candidate.metrics.channels),
+            boundary_samples=candidate.chunk_boundaries_samples,
+            boundary_window_samples=boundary_window_samples,
+        )
     return diagnostics
 
 
@@ -551,6 +623,101 @@ def compare_codec_sequences(
     )
 
 
+def compare_waveforms(
+    reference_path: str,
+    reference_audio_bytes: bytes,
+    candidate_path: str,
+    candidate_audio_bytes: bytes,
+    *,
+    channels: int = 1,
+    boundary_samples: Sequence[int] = (),
+    boundary_window_samples: int = 0,
+) -> WaveformComparison:
+    reference_wave = pcm16le_bytes_to_float_audio(reference_audio_bytes, channels=channels).reshape(-1)
+    candidate_wave = pcm16le_bytes_to_float_audio(candidate_audio_bytes, channels=channels).reshape(-1)
+    compared_samples = min(len(reference_wave), len(candidate_wave))
+
+    if compared_samples == 0:
+        return WaveformComparison(
+            reference_path=reference_path,
+            candidate_path=candidate_path,
+            compared_samples=0,
+            reference_total_samples=len(reference_wave),
+            candidate_total_samples=len(candidate_wave),
+            length_delta_samples=len(candidate_wave) - len(reference_wave),
+            mean_abs_diff=0.0,
+            rms_diff=0.0,
+            max_abs_diff=0.0,
+            pearson_corr=1.0,
+            boundary_windows=[],
+        )
+
+    reference_aligned = reference_wave[:compared_samples]
+    candidate_aligned = candidate_wave[:compared_samples]
+    diff = candidate_aligned - reference_aligned
+    abs_diff = np.abs(diff)
+
+    if np.allclose(reference_aligned, candidate_aligned):
+        pearson_corr = 1.0
+    else:
+        ref_std = float(np.std(reference_aligned))
+        cand_std = float(np.std(candidate_aligned))
+        if ref_std == 0.0 or cand_std == 0.0:
+            pearson_corr = 0.0
+        else:
+            pearson_corr = float(np.corrcoef(reference_aligned, candidate_aligned)[0, 1])
+
+    boundary_windows: list[BoundaryWindowComparison] = []
+    if boundary_window_samples > 0:
+        for boundary_sample in boundary_samples:
+            if boundary_sample <= 0 or boundary_sample >= compared_samples:
+                continue
+            start = max(0, boundary_sample - boundary_window_samples)
+            end = min(compared_samples, boundary_sample + boundary_window_samples)
+            if end <= start:
+                continue
+            window = diff[start:end]
+            window_abs = np.abs(window)
+            boundary_windows.append(
+                BoundaryWindowComparison(
+                    boundary_sample=int(boundary_sample),
+                    start_sample=int(start),
+                    end_sample=int(end),
+                    mean_abs_diff=float(window_abs.mean()),
+                    rms_diff=float(np.sqrt(np.mean(np.square(window)))),
+                    max_abs_diff=float(window_abs.max()),
+                )
+            )
+
+    return WaveformComparison(
+        reference_path=reference_path,
+        candidate_path=candidate_path,
+        compared_samples=compared_samples,
+        reference_total_samples=len(reference_wave),
+        candidate_total_samples=len(candidate_wave),
+        length_delta_samples=len(candidate_wave) - len(reference_wave),
+        mean_abs_diff=float(abs_diff.mean()),
+        rms_diff=float(np.sqrt(np.mean(np.square(diff)))),
+        max_abs_diff=float(abs_diff.max()),
+        pearson_corr=pearson_corr,
+        boundary_windows=boundary_windows,
+    )
+
+
+def build_chunk_boundaries(chunks: Sequence[bytes], *, channels: int = 1) -> tuple[int, ...]:
+    if channels <= 0:
+        raise ValueError("channels must be > 0")
+    bytes_per_sample = channels * 2
+    total_samples = 0
+    boundaries: list[int] = []
+    for chunk in chunks[:-1]:
+        if not chunk:
+            continue
+        total_samples += len(chunk) // bytes_per_sample
+        boundaries.append(total_samples)
+    return tuple(boundaries)
+
+
 def normalize_codec_tokens(codec_steps: Sequence[torch.Tensor]) -> tuple[tuple[int, ...], ...]:
     return tuple(
         tuple(int(item) for item in step.detach().cpu().tolist())
@@ -591,6 +758,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--default_voice_alias", default="default")
     parser.add_argument("--chunk_steps", type=int, default=4)
     parser.add_argument("--left_context_steps", type=int, default=25)
+    parser.add_argument("--first_chunk_steps", type=int, default=None)
+    parser.add_argument("--crossfade_samples", type=int, default=0)
     parser.add_argument("--samples_per_step", type=int, default=1920)
     parser.add_argument("--device_map", default="cuda:0")
     parser.add_argument("--torch_dtype", default="bfloat16")
@@ -611,6 +780,8 @@ def main() -> None:
         voice_registry_file=Path(args.voice_registry_file) if args.voice_registry_file else None,
         chunk_steps=args.chunk_steps,
         left_context_steps=args.left_context_steps,
+        first_chunk_steps=args.first_chunk_steps,
+        crossfade_samples=args.crossfade_samples,
         samples_per_step=args.samples_per_step,
         device_map=args.device_map,
         torch_dtype=args.torch_dtype,

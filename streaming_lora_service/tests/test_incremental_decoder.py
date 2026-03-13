@@ -10,6 +10,10 @@ class IncrementalDecoderTests(unittest.TestCase):
     def fake_decode(start_step: int, end_step: int) -> bytes:
         return b"".join(step.to_bytes(2, byteorder="little", signed=False) for step in range(start_step, end_step))
 
+    @staticmethod
+    def fake_pcm16_decode(start_step: int, end_step: int) -> bytes:
+        return b"".join(step.to_bytes(2, byteorder="little", signed=True) for step in range(start_step, end_step))
+
     def test_decode_waits_until_chunk_threshold(self) -> None:
         decoder = IncrementalAudioDecoder(IncrementalDecoderConfig(chunk_steps=4, left_context_steps=2))
 
@@ -50,6 +54,50 @@ class IncrementalDecoderTests(unittest.TestCase):
         self.assertEqual(decoder.emitted_until_step, 3)
         self.assertEqual(decoder.buffer_start_step, 2)
         self.assertEqual(decoder.buffered_step_count, 1)
+
+    def test_first_chunk_steps_delays_only_the_initial_emit(self) -> None:
+        decoder = IncrementalAudioDecoder(
+            IncrementalDecoderConfig(chunk_steps=2, left_context_steps=1, first_chunk_steps=3)
+        )
+
+        self.assertIsNone(decoder.decode(2, decode_fn=self.fake_decode, bytes_per_step=2))
+        first_audio = decoder.decode(3, decode_fn=self.fake_decode, bytes_per_step=2)
+        second_wait = decoder.decode(4, decode_fn=self.fake_decode, bytes_per_step=2)
+        second_audio = decoder.decode(5, decode_fn=self.fake_decode, bytes_per_step=2, finished=True)
+
+        self.assertEqual(first_audio, self.fake_decode(0, 3))
+        self.assertIsNone(second_wait)
+        self.assertEqual(second_audio, self.fake_decode(3, 5))
+        self.assertEqual(decoder.emitted_until_step, 5)
+
+    def test_crossfade_blends_previous_tail_with_next_chunk_head(self) -> None:
+        decoder = IncrementalAudioDecoder(
+            IncrementalDecoderConfig(chunk_steps=2, left_context_steps=0, crossfade_samples=1)
+        )
+
+        first_audio = decoder.decode(2, decode_fn=self.fake_pcm16_decode, bytes_per_step=2)
+        second_audio = decoder.decode(4, decode_fn=self.fake_pcm16_decode, bytes_per_step=2, finished=True)
+
+        self.assertEqual(first_audio, (0).to_bytes(2, byteorder="little", signed=True))
+        self.assertEqual(
+            second_audio,
+            (2).to_bytes(2, byteorder="little", signed=True) + (3).to_bytes(2, byteorder="little", signed=True),
+        )
+
+    def test_crossfade_can_delay_initial_emit_until_enough_audio_arrives(self) -> None:
+        decoder = IncrementalAudioDecoder(
+            IncrementalDecoderConfig(chunk_steps=1, left_context_steps=0, crossfade_samples=2)
+        )
+
+        first_audio = decoder.decode(1, decode_fn=self.fake_pcm16_decode, bytes_per_step=2)
+        second_audio = decoder.decode(3, decode_fn=self.fake_pcm16_decode, bytes_per_step=2, finished=True)
+
+        self.assertEqual(first_audio, b"")
+        self.assertEqual(
+            second_audio,
+            (0).to_bytes(2, byteorder="little", signed=True)
+            + (2).to_bytes(2, byteorder="little", signed=True),
+        )
 
 
 if __name__ == "__main__":

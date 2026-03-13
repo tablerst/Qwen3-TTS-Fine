@@ -32,6 +32,8 @@ class RealtimeServerDependencies:
     audio_chunk_duration_ms: int = 320
     chunk_steps: int = 4
     left_context_steps: int = 25
+    first_chunk_steps: int | None = None
+    crossfade_samples: int = 0
     samples_per_step: int = 1920
 
 
@@ -81,6 +83,8 @@ class RealtimeServerConfig:
     audio_chunk_duration_ms: int = 320
     chunk_steps: int = 4
     left_context_steps: int = 25
+    first_chunk_steps: int | None = None
+    crossfade_samples: int = 0
     samples_per_step: int = 1920
     device_map: str = "cuda:0"
     torch_dtype: str = "bfloat16"
@@ -97,6 +101,7 @@ class BundleSpeechService:
                 samples_per_step=self.deps.samples_per_step,
                 chunk_steps=self.deps.chunk_steps,
                 left_context_steps=self.deps.left_context_steps,
+                crossfade_samples=self.deps.crossfade_samples,
             )
         )
 
@@ -182,6 +187,8 @@ class BundleSpeechService:
             runtime_session=session,
             chunk_steps=self.deps.chunk_steps,
             left_context_steps=self.deps.left_context_steps,
+            first_chunk_steps=self.deps.first_chunk_steps,
+            crossfade_samples=self.deps.crossfade_samples,
         )
         yield from generator.iter_audio_chunks()
 
@@ -259,6 +266,8 @@ def build_dependencies(
         audio_chunk_duration_ms=config.audio_chunk_duration_ms,
         chunk_steps=config.chunk_steps,
         left_context_steps=config.left_context_steps,
+        first_chunk_steps=config.first_chunk_steps,
+        crossfade_samples=config.crossfade_samples,
         samples_per_step=config.samples_per_step,
     )
 
@@ -452,6 +461,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--audio_chunk_duration_ms", type=int, default=320)
     parser.add_argument("--chunk_steps", type=int, default=4)
     parser.add_argument("--left_context_steps", type=int, default=25)
+    parser.add_argument("--first_chunk_steps", type=int, default=None)
+    parser.add_argument("--crossfade_samples", type=int, default=0)
     parser.add_argument("--samples_per_step", type=int, default=1920)
     parser.add_argument("--device_map", default="cuda:0")
     parser.add_argument("--torch_dtype", default="bfloat16")
@@ -476,6 +487,8 @@ def main() -> None:
         audio_chunk_duration_ms=args.audio_chunk_duration_ms,
         chunk_steps=args.chunk_steps,
         left_context_steps=args.left_context_steps,
+        first_chunk_steps=args.first_chunk_steps,
+        crossfade_samples=args.crossfade_samples,
         samples_per_step=args.samples_per_step,
         device_map=args.device_map,
         torch_dtype=args.torch_dtype,

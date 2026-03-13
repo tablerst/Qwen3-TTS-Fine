@@ -58,6 +58,8 @@ class StreamingCustomVoiceGenerator:
         runtime_session: RuntimeSession | None = None,
         chunk_steps: int = 4,
         left_context_steps: int = 25,
+        first_chunk_steps: int | None = None,
+        crossfade_samples: int = 0,
         **generate_kwargs: Any,
     ) -> None:
         self.qwen3tts = qwen3tts
@@ -76,7 +78,12 @@ class StreamingCustomVoiceGenerator:
             **generate_kwargs,
         )
         self.metrics = StreamingGenerationMetrics()
-        decoder_config = IncrementalDecoderConfig(chunk_steps=chunk_steps, left_context_steps=left_context_steps)
+        decoder_config = IncrementalDecoderConfig(
+            chunk_steps=chunk_steps,
+            left_context_steps=left_context_steps,
+            first_chunk_steps=first_chunk_steps,
+            crossfade_samples=crossfade_samples,
+        )
         resumable_session = self.runtime_session if self.runtime_session is not None and self.runtime_session.can_resume_generation(
             text=text,
             speaker_name=speaker,
@@ -241,6 +248,7 @@ class StreamingCustomVoiceGenerator:
         audio_bytes = self.decoder.decode_buffered(
             decode_fn=self._decode_codec_window,
             bytes_per_step=self._bytes_per_step,
+            channels=1,
             force=force,
             finished=finished,
         )

@@ -13,10 +13,13 @@ from streaming_lora_service.quality_regression import (
     ValidationCase,
     ValidationCaseResult,
     audio_duration_seconds,
+    build_chunk_boundaries,
     build_case_warnings,
     build_codec_diagnostics,
     build_summary,
+    build_waveform_diagnostics,
     compare_codec_sequences,
+    compare_waveforms,
     collect_streaming_sampler_full_decode,
 )
 from streaming_lora_service.tests.test_streaming_generator import FakeQwen3TTS
@@ -112,6 +115,8 @@ class QualityRegressionTests(unittest.TestCase):
                 default_voice_alias="yachiyo_formal",
                 chunk_steps=2,
                 left_context_steps=1,
+                first_chunk_steps=None,
+                crossfade_samples=0,
                 samples_per_step=4,
             )
         )
@@ -130,6 +135,7 @@ class QualityRegressionTests(unittest.TestCase):
         self.assertEqual(collected.metrics.finish_reason, "eos")
         self.assertEqual(collected.metrics.delta_chunks, 2)
         self.assertEqual(collected.codec_tokens, ((11, 31, 51), (12, 32, 52), (13, 33, 53)))
+        self.assertEqual(collected.chunk_boundaries_samples, (8,))
 
     def test_compare_codec_sequences_reports_first_divergence(self) -> None:
         comparison = compare_codec_sequences(
@@ -162,6 +168,67 @@ class QualityRegressionTests(unittest.TestCase):
         self.assertIn("http_streaming_runtime_vs_websocket_realtime", diagnostics)
         self.assertEqual(diagnostics["http_non_vs_streaming_sampler_full_decode"].first_divergence_step, 1)
         self.assertTrue(diagnostics["streaming_sampler_full_decode_vs_http_streaming_runtime"].identical)
+
+    def test_build_chunk_boundaries_uses_chunk_sizes(self) -> None:
+        boundaries = build_chunk_boundaries([b"\x00\x00" * 4, b"\x00\x00" * 2, b"\x00\x00" * 3])
+
+        self.assertEqual(boundaries, (4, 6))
+
+    def test_compare_waveforms_reports_global_and_boundary_metrics(self) -> None:
+        reference = float_audio_to_pcm16le_bytes(np.asarray([0.0, 0.1, 0.2, 0.3, 0.4], dtype=np.float32))
+        candidate = float_audio_to_pcm16le_bytes(np.asarray([0.0, 0.1, 0.25, 0.35, 0.4], dtype=np.float32))
+
+        comparison = compare_waveforms(
+            "reference",
+            reference,
+            "candidate",
+            candidate,
+            boundary_samples=(2,),
+            boundary_window_samples=1,
+        )
+
+        self.assertEqual(comparison.compared_samples, 5)
+        self.assertGreater(comparison.mean_abs_diff, 0.0)
+        self.assertGreater(comparison.rms_diff, 0.0)
+        self.assertLess(comparison.pearson_corr, 1.0)
+        self.assertEqual(len(comparison.boundary_windows), 1)
+        self.assertEqual(comparison.boundary_windows[0].boundary_sample, 2)
+
+    def test_build_waveform_diagnostics_uses_candidate_chunk_boundaries(self) -> None:
+        base = float_audio_to_pcm16le_bytes(np.asarray([0.0, 0.1, 0.2, 0.3], dtype=np.float32))
+        shifted = float_audio_to_pcm16le_bytes(np.asarray([0.0, 0.1, 0.25, 0.3], dtype=np.float32))
+
+        diagnostics = build_waveform_diagnostics(
+            {
+                "http_non_streaming": SimpleNamespace(
+                    audio_bytes=base,
+                    metrics=PathMetrics("http_non_streaming", 24000, 1, len(base), 0.0),
+                    chunk_boundaries_samples=(),
+                ),
+                "streaming_sampler_full_decode": SimpleNamespace(
+                    audio_bytes=base,
+                    metrics=PathMetrics("streaming_sampler_full_decode", 24000, 1, len(base), 0.0),
+                    chunk_boundaries_samples=(2,),
+                ),
+                "http_streaming_runtime": SimpleNamespace(
+                    audio_bytes=shifted,
+                    metrics=PathMetrics("http_streaming_runtime", 24000, 1, len(shifted), 0.0),
+                    chunk_boundaries_samples=(2,),
+                ),
+                "websocket_realtime": SimpleNamespace(
+                    audio_bytes=shifted,
+                    metrics=PathMetrics("websocket_realtime", 24000, 1, len(shifted), 0.0),
+                    chunk_boundaries_samples=(2,),
+                ),
+            },
+            boundary_window_samples=1,
+        )
+
+        self.assertIn("streaming_sampler_full_decode_vs_http_streaming_runtime", diagnostics)
+        self.assertEqual(
+            diagnostics["streaming_sampler_full_decode_vs_http_streaming_runtime"].boundary_windows[0].boundary_sample,
+            2,
+        )
 
 
 if __name__ == "__main__":

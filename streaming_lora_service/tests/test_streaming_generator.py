@@ -345,6 +345,31 @@ class StreamingGeneratorTests(unittest.TestCase):
         self.assertEqual(float(logits[0, 11]), 4.0)
         self.assertEqual(float(logits[0, 12]), -16.0)
 
+    def test_first_chunk_steps_can_hold_back_initial_emit_without_affecting_completion(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，首包策略。",
+            speaker="inference_speaker",
+            language="Chinese",
+            chunk_steps=2,
+            left_context_steps=1,
+            first_chunk_steps=3,
+        )
+
+        first = generator.step()
+        second = generator.step()
+        third = generator.step()
+        final = generator.step()
+
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertIsNotNone(third)
+        self.assertIsNone(final)
+        self.assertEqual(generator.metrics.first_emitted_step, 3)
+        self.assertEqual(generator.metrics.emitted_chunks, 1)
+        self.assertEqual(generator.metrics.finish_reason, "eos")
+
 
 if __name__ == "__main__":
     unittest.main()

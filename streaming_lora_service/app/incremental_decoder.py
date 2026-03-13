@@ -16,12 +16,18 @@ class IncrementalDecoderError(RuntimeError):
 class IncrementalDecoderConfig:
     chunk_steps: int = 4
     left_context_steps: int = 25
+    first_chunk_steps: int | None = None
+    crossfade_samples: int = 0
 
     def __post_init__(self) -> None:
         if self.chunk_steps <= 0:
             raise ValueError("chunk_steps must be > 0")
         if self.left_context_steps < 0:
             raise ValueError("left_context_steps must be >= 0")
+        if self.first_chunk_steps is not None and self.first_chunk_steps <= 0:
+            raise ValueError("first_chunk_steps must be > 0 when provided")
+        if self.crossfade_samples < 0:
+            raise ValueError("crossfade_samples must be >= 0")
 
 
 class IncrementalAudioDecoder:
@@ -30,6 +36,7 @@ class IncrementalAudioDecoder:
         self.emitted_until_step = 0
         self.buffer_start_step = 0
         self._codec_buffer: deque[Any] = deque()
+        self._pending_crossfade_tail = b""
 
     @property
     def buffered_until_step(self) -> int:
@@ -43,6 +50,7 @@ class IncrementalAudioDecoder:
         self.emitted_until_step = 0
         self.buffer_start_step = 0
         self._codec_buffer.clear()
+        self._pending_crossfade_tail = b""
 
     def push_codec_step(self, codec_ids: Any) -> int:
         self._codec_buffer.append(codec_ids)
@@ -61,7 +69,12 @@ class IncrementalAudioDecoder:
         new_steps = total_steps - self.emitted_until_step
         if new_steps == 0:
             return None
-        if not force and not finished and new_steps < self.config.chunk_steps:
+        required_steps = (
+            self.config.first_chunk_steps
+            if self.emitted_until_step == 0 and self.config.first_chunk_steps is not None
+            else self.config.chunk_steps
+        )
+        if not force and not finished and new_steps < required_steps:
             return None
 
         start_step = max(0, self.emitted_until_step - self.config.left_context_steps)
@@ -77,11 +90,14 @@ class IncrementalAudioDecoder:
         *,
         decode_fn: Callable[[int, int], bytes],
         bytes_per_step: int,
+        channels: int = 1,
         force: bool = False,
         finished: bool = False,
     ) -> bytes | None:
         if bytes_per_step <= 0:
             raise ValueError("bytes_per_step must be > 0")
+        if channels <= 0:
+            raise ValueError("channels must be > 0")
 
         plan = self.plan(total_steps, force=force, finished=finished)
         if plan is None:
@@ -96,18 +112,21 @@ class IncrementalAudioDecoder:
             )
 
         self.emitted_until_step = plan.end_step
-        return decoded[overlap_bytes:]
+        return self._apply_crossfade(decoded[overlap_bytes:], channels=channels, finished=finished)
 
     def decode_buffered(
         self,
         *,
         decode_fn: Callable[[Sequence[Any]], bytes],
         bytes_per_step: int,
+        channels: int = 1,
         force: bool = False,
         finished: bool = False,
     ) -> bytes | None:
         if bytes_per_step <= 0:
             raise ValueError("bytes_per_step must be > 0")
+        if channels <= 0:
+            raise ValueError("channels must be > 0")
 
         total_steps = self.buffered_until_step
         plan = self.plan(total_steps, force=force, finished=finished)
@@ -132,7 +151,7 @@ class IncrementalAudioDecoder:
 
         self.emitted_until_step = plan.end_step
         self._trim_codec_buffer()
-        return decoded[overlap_bytes:]
+        return self._apply_crossfade(decoded[overlap_bytes:], channels=channels, finished=finished)
 
     def snapshot(self) -> dict[str, int]:
         return {
@@ -147,3 +166,85 @@ class IncrementalAudioDecoder:
         for _ in range(max(0, drop_count)):
             self._codec_buffer.popleft()
         self.buffer_start_step = keep_from_step
+
+    def _apply_crossfade(self, audio_bytes: bytes, *, channels: int, finished: bool) -> bytes:
+        if self.config.crossfade_samples <= 0:
+            return audio_bytes
+
+        frame_bytes = channels * 2
+        if not audio_bytes:
+            if finished and self._pending_crossfade_tail:
+                pending = self._pending_crossfade_tail
+                self._pending_crossfade_tail = b""
+                return pending
+            return b""
+
+        output = bytearray()
+        remaining = audio_bytes
+        if self._pending_crossfade_tail:
+            blend_bytes = min(len(self._pending_crossfade_tail), len(remaining))
+            blend_bytes -= blend_bytes % frame_bytes
+            if blend_bytes > 0:
+                output.extend(
+                    self._crossfade_pcm16(
+                        self._pending_crossfade_tail[:blend_bytes],
+                        remaining[:blend_bytes],
+                        channels=channels,
+                    )
+                )
+                self._pending_crossfade_tail = self._pending_crossfade_tail[blend_bytes:]
+                remaining = remaining[blend_bytes:]
+            if self._pending_crossfade_tail:
+                if finished:
+                    output.extend(self._pending_crossfade_tail)
+                    self._pending_crossfade_tail = b""
+                return bytes(output)
+
+        if finished:
+            output.extend(remaining)
+            self._pending_crossfade_tail = b""
+            return bytes(output)
+
+        holdback_bytes = min(len(remaining), self.config.crossfade_samples * frame_bytes)
+        holdback_bytes -= holdback_bytes % frame_bytes
+        if holdback_bytes <= 0:
+            output.extend(remaining)
+            self._pending_crossfade_tail = b""
+            return bytes(output)
+
+        output.extend(remaining[:-holdback_bytes])
+        self._pending_crossfade_tail = remaining[-holdback_bytes:]
+        return bytes(output)
+
+    @staticmethod
+    def _crossfade_pcm16(previous: bytes, current: bytes, *, channels: int) -> bytes:
+        if len(previous) != len(current):
+            raise IncrementalDecoderError("Crossfade inputs must have the same byte length")
+        if not previous:
+            return b""
+
+        frame_bytes = channels * 2
+        if len(previous) % frame_bytes != 0:
+            raise IncrementalDecoderError("Crossfade inputs must align to PCM16 frame boundaries")
+
+        frame_count = len(previous) // frame_bytes
+        previous_view = memoryview(previous).cast("h")
+        current_view = memoryview(current).cast("h")
+        blended = bytearray(len(previous))
+        blended_view = memoryview(blended).cast("h")
+
+        for frame_index in range(frame_count):
+            if frame_count == 1:
+                current_weight = 0.5
+            else:
+                current_weight = frame_index / float(frame_count - 1)
+            previous_weight = 1.0 - current_weight
+            base_index = frame_index * channels
+            for channel_index in range(channels):
+                sample_index = base_index + channel_index
+                sample = int(round(
+                    previous_view[sample_index] * previous_weight
+                    + current_view[sample_index] * current_weight
+                ))
+                blended_view[sample_index] = max(-32768, min(32767, sample))
+        return bytes(blended)

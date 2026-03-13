@@ -12,6 +12,7 @@ class AudioStepStreamerConfig:
     samples_per_step: int = 1920
     chunk_steps: int = 4
     left_context_steps: int = 25
+    crossfade_samples: int = 0
 
     def __post_init__(self) -> None:
         if self.samples_per_step <= 0:
@@ -20,6 +21,8 @@ class AudioStepStreamerConfig:
             raise ValueError("chunk_steps must be > 0")
         if self.left_context_steps < 0:
             raise ValueError("left_context_steps must be >= 0")
+        if self.crossfade_samples < 0:
+            raise ValueError("crossfade_samples must be >= 0")
 
 
 class AudioStepStreamer:
@@ -41,6 +44,7 @@ class AudioStepStreamer:
             IncrementalDecoderConfig(
                 chunk_steps=self.config.chunk_steps,
                 left_context_steps=self.config.left_context_steps,
+                crossfade_samples=self.config.crossfade_samples,
             )
         )
 
@@ -58,6 +62,7 @@ class AudioStepStreamer:
                 next_step,
                 decode_fn=decode_fn,
                 bytes_per_step=bytes_per_step,
+                channels=max(1, synthesized.channels),
                 force=False,
                 finished=False,
             )
@@ -69,6 +74,7 @@ class AudioStepStreamer:
             total_steps,
             decode_fn=decode_fn,
             bytes_per_step=bytes_per_step,
+            channels=max(1, synthesized.channels),
             force=True,
             finished=True,
         )
