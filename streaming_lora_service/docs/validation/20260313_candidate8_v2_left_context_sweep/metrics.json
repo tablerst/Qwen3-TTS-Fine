@@ -1,0 +1,217 @@
+{
+  "config": {
+    "bundle_dir": "outputs\\lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best",
+    "voice_registry_file": "streaming_lora_service\\configs\\voice_registry.candidate8_v2.json",
+    "default_voice_alias": "yachiyo_candidate8_v2",
+    "public_model_alias": "qwen3-tts-flash-realtime",
+    "chunk_steps": 4,
+    "samples_per_step": 1920,
+    "first_chunk_steps": null,
+    "crossfade_samples": 0,
+    "left_context_values": [
+      8,
+      16,
+      25,
+      32
+    ],
+    "seed": 1234
+  },
+  "cases": {
+    "zh_formal": [
+      {
+        "left_context_steps": 8,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1041.87,
+          "first_emitted_step": 4,
+          "delta_chunks": 27,
+          "duration_s": 8.48
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.006431156769394875,
+          "rms_diff": 0.012536088936030865,
+          "max_abs_diff": 0.22553178668022156,
+          "pearson_corr": 0.9695925713559372,
+          "avg_boundary_rms_diff": 0.00944265952515567,
+          "max_boundary_rms_diff": 0.03116459958255291
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      },
+      {
+        "left_context_steps": 16,
+        "http_streaming_runtime": {
+          "ttfb_ms": 990.85,
+          "first_emitted_step": 4,
+          "delta_chunks": 27,
+          "duration_s": 8.48
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.004144483711570501,
+          "rms_diff": 0.007815326564013958,
+          "max_abs_diff": 0.11767937242984772,
+          "pearson_corr": 0.9876830530047519,
+          "avg_boundary_rms_diff": 0.006094247611319868,
+          "max_boundary_rms_diff": 0.022235337644815445
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      },
+      {
+        "left_context_steps": 25,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1054.22,
+          "first_emitted_step": 4,
+          "delta_chunks": 27,
+          "duration_s": 8.48
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.003400401910766959,
+          "rms_diff": 0.006514424458146095,
+          "max_abs_diff": 0.09179967641830444,
+          "pearson_corr": 0.9913318096715511,
+          "avg_boundary_rms_diff": 0.004970245695018933,
+          "max_boundary_rms_diff": 0.016186559572815895
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      },
+      {
+        "left_context_steps": 32,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1229.7,
+          "first_emitted_step": 4,
+          "delta_chunks": 27,
+          "duration_s": 8.48
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.0024574080016463995,
+          "rms_diff": 0.005153096746653318,
+          "max_abs_diff": 0.09765923023223877,
+          "pearson_corr": 0.9944126983627215,
+          "avg_boundary_rms_diff": 0.0036491310688688827,
+          "max_boundary_rms_diff": 0.011999835260212421
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      }
+    ],
+    "ja_formal": [
+      {
+        "left_context_steps": 8,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1105.05,
+          "first_emitted_step": 4,
+          "delta_chunks": 21,
+          "duration_s": 6.64
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.005815626122057438,
+          "rms_diff": 0.012155786156654358,
+          "max_abs_diff": 0.28998687863349915,
+          "pearson_corr": 0.9649563147869438,
+          "avg_boundary_rms_diff": 0.00862417018574888,
+          "max_boundary_rms_diff": 0.018764633685350418
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      },
+      {
+        "left_context_steps": 16,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1210.89,
+          "first_emitted_step": 4,
+          "delta_chunks": 21,
+          "duration_s": 6.64
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.0034617355559021235,
+          "rms_diff": 0.006563696078956127,
+          "max_abs_diff": 0.1349528431892395,
+          "pearson_corr": 0.9893337675986144,
+          "avg_boundary_rms_diff": 0.005365316483175775,
+          "max_boundary_rms_diff": 0.01194519829005003
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      },
+      {
+        "left_context_steps": 25,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1027.64,
+          "first_emitted_step": 4,
+          "delta_chunks": 21,
+          "duration_s": 6.64
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.0028289048932492733,
+          "rms_diff": 0.005882836878299713,
+          "max_abs_diff": 0.11566515266895294,
+          "pearson_corr": 0.9913795688654113,
+          "avg_boundary_rms_diff": 0.004441859867756648,
+          "max_boundary_rms_diff": 0.011724361218512058
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      },
+      {
+        "left_context_steps": 32,
+        "http_streaming_runtime": {
+          "ttfb_ms": 1279.63,
+          "first_emitted_step": 4,
+          "delta_chunks": 21,
+          "duration_s": 6.64
+        },
+        "streaming_vs_runtime": {
+          "mean_abs_diff": 0.0022083488292992115,
+          "rms_diff": 0.00478077307343483,
+          "max_abs_diff": 0.10760826617479324,
+          "pearson_corr": 0.9943062012357509,
+          "avg_boundary_rms_diff": 0.0038912127325147596,
+          "max_boundary_rms_diff": 0.014351384714245796
+        },
+        "runtime_vs_ws": {
+          "mean_abs_diff": 0.0,
+          "rms_diff": 0.0,
+          "max_abs_diff": 0.0,
+          "pearson_corr": 1.0
+        },
+        "warnings": []
+      }
+    ]
+  }
+}

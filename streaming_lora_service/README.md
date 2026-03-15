@@ -293,6 +293,125 @@ python -m streaming_lora_service.quality_regression --bundle_dir <path_to_bundle
 - 自动告警：如流式时长显著高于离线、`finish_reason != eos`、HTTP/WS 输出大小不一致
 - 每个 case 对应的 WAV 文件与汇总 `metrics.json`
 
+## 新增：WS 时延 benchmark 工具
+
+如果你已经把服务跑起来，当前仓库还提供了一个**面向外部 WebSocket 端点**的轻量 benchmark：
+
+- 入口：`qwen-tts-ws-benchmark`
+- 模块：`python -m streaming_lora_service.ws_benchmark`
+
+它和 `quality_regression.py` 的定位不同：
+
+- `quality_regression.py` 更偏**离线 / HTTP / WS 三路质量与路径对照**；
+- `ws_benchmark.py` 更偏**对已启动 WS 服务做真实联机时延测量**。
+
+当前脚本会测：
+
+- `TTFT`：从发送 `input_text_buffer.commit` 到收到首个 `response.audio.delta` 的耗时
+- `response_created_ms`：从 `commit` 到 `response.created` 的耗时
+- `total_elapsed_ms`：从 `commit` 到 `response.done` 的总耗时
+- `audio_duration_s`：收到的 PCM 音频总时长
+- `RTF`：`total_elapsed_s / audio_duration_s`
+- `audio_chunks / total_audio_bytes`
+
+说明：
+
+- 对这个纯音频 WS 接口来说，`TTFT` 可以理解为“首个音频增量块可用时间”；
+- 如果你更习惯叫 `TTFB` / `TTFA`，这里语义上是同一件事：**首个 `response.audio.delta` 到达时间**。
+
+示例：
+
+```text
+qwen-tts-ws-benchmark --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --iterations 5 --warmup 1 --output_path streaming_lora_service/docs/validation/ws_benchmark_metrics.json
+```
+
+如果要指定文本：
+
+```text
+qwen-tts-ws-benchmark --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --voice yachiyo_candidate8_v2 --text "你好，这是一次 WebSocket benchmark 测试。" --language_type Chinese --instructions "正式，平静，清晰。"
+```
+
+补充说明：
+
+- 若不传 `--voice`，脚本会先调用 `/healthz` 与 `/v1/voices` 做 preflight，并自动选择一个兼容 voice；
+- 若服务对外宣告地址是 `0.0.0.0`，客户端实际调用时请改成 `127.0.0.1` 或服务机真实 IP；
+- 可通过 `--save_audio_dir` 把每轮 benchmark 收到的音频另存为 WAV，便于试听与排查异常。
+
+## 新增：HTTP streaming benchmark 工具
+
+如果你想专门测 HTTP `stream=true` 路径，当前仓库也已经补了一份独立脚本：
+
+- 入口：`qwen-tts-http-benchmark`
+- 模块：`python -m streaming_lora_service.http_streaming_benchmark`
+
+当前脚本会测：
+
+- `response_headers_ms`：发起 POST 到收到 HTTP 响应头
+- `TTFT`：发起 POST 到收到**首个带音频数据**的 NDJSON 行
+- `final_chunk_ms`：发起 POST 到收到最终 `finish_reason="stop"` 的尾行
+- `total_elapsed_ms`
+- `audio_duration_s`
+- `RTF`
+- `audio_chunks / total_audio_bytes`
+
+示例：
+
+```text
+qwen-tts-http-benchmark --http_base_url http://127.0.0.1:9010 --endpoint /v1/tts --iterations 5 --warmup 1 --output_path streaming_lora_service/docs/validation/http_benchmark_metrics.json
+```
+
+单条文本示例：
+
+```text
+qwen-tts-http-benchmark --http_base_url http://127.0.0.1:9010 --voice yachiyo_candidate8_v2 --text "你好，这是一次 HTTP streaming benchmark 测试。" --language_type Chinese --instructions "正式，平静，清晰。"
+```
+
+说明：
+
+- `TTFT` 在 HTTP streaming 场景下定义为：**首个包含 `output.audio.data` 的 NDJSON 音频块到达时间**；
+- 中间块是 Base64 PCM16，尾块包含 `audio.id / audio.url`；
+- 也支持 `--save_audio_dir` 把流式过程中拼起来的 PCM 直接落成 WAV。
+
+## 新增：并发压测工具
+
+如果你需要压服务在**并发下**的首包和吞吐，当前仓库也已经补了一份 load test：
+
+- 入口：`qwen-tts-load-test`
+- 模块：`python -m streaming_lora_service.concurrent_benchmark`
+
+支持两种 transport：
+
+- `--transport http-streaming`
+- `--transport ws`
+
+会输出：
+
+- `success_count / failure_count`
+- `wall_time_s`
+- `throughput_rps`
+- `audio_seconds_per_wall_second`
+- 并发场景下的 `TTFT p50/p95`
+- 并发场景下的 `total_elapsed_ms p50/p95`
+- 并发场景下的 `RTF mean/p50/p95`
+
+HTTP 并发示例：
+
+```text
+qwen-tts-load-test --transport http-streaming --http_base_url http://127.0.0.1:9010 --concurrency 4 --requests 8 --text "你好，这是一次并发 HTTP streaming 压测。" --output_path streaming_lora_service/docs/validation/http_load_test_metrics.json
+```
+
+WS 并发示例：
+
+```text
+qwen-tts-load-test --transport ws --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --concurrency 4 --requests 8 --text "你好，这是一次并发 WebSocket 压测。" --output_path streaming_lora_service/docs/validation/ws_load_test_metrics.json
+```
+
+建议：
+
+- 先用 `--warmup 1` 或 `2` 预热，再看正式数据；
+- 真要看极限吞吐，建议固定单条文本并拉长 `requests`；
+- 若本机测试环境开了系统代理，脚本的 preflight 已默认避开环境代理，但实际压测地址仍建议显式写 `127.0.0.1` 或真实 IP。
+
 ## 先读哪几份文档
 
 建议按顺序阅读：

@@ -44,6 +44,9 @@ Repository = "https://github.com/Qwen/Qwen3-TTS"
 qwen-tts-demo = "qwen_tts.cli.demo:main"
 qwen-tts-realtime-serve = "streaming_lora_service.app.server:main"
 qwen-tts-streaming-validate = "streaming_lora_service.quality_regression:main"
+qwen-tts-ws-benchmark = "streaming_lora_service.ws_benchmark:main"
+qwen-tts-http-benchmark = "streaming_lora_service.http_streaming_benchmark:main"
+qwen-tts-load-test = "streaming_lora_service.concurrent_benchmark:main"
 
 [tool.setuptools]
 packages = { find = { where = ["."] , include = ["qwen_tts*", "streaming_lora_service*"] } }
