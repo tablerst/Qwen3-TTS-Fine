@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
 from dataclasses import dataclass
 import json
+import logging
 from pathlib import Path
+import time
 from typing import Any
 from uuid import uuid4
 
@@ -23,6 +26,9 @@ from .step_streamer import AudioStepStreamer, AudioStepStreamerConfig
 from .voice_registry import VoiceRegistry
 
 
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class RealtimeServerDependencies:
     loaded_bundle: LoadedBundle
@@ -32,9 +38,10 @@ class RealtimeServerDependencies:
     audio_chunk_duration_ms: int = 320
     chunk_steps: int = 4
     left_context_steps: int = 25
-    first_chunk_steps: int | None = None
+    first_chunk_steps: int | None = 1
     crossfade_samples: int = 0
     samples_per_step: int = 1920
+    trace_timing: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,13 +90,14 @@ class RealtimeServerConfig:
     audio_chunk_duration_ms: int = 320
     chunk_steps: int = 4
     left_context_steps: int = 25
-    first_chunk_steps: int | None = None
+    first_chunk_steps: int | None = 1
     crossfade_samples: int = 0
     samples_per_step: int = 1920
     device_map: str = "cuda:0"
     torch_dtype: str = "bfloat16"
     attn_implementation: str = "sdpa"
     local_files_only: bool = False
+    trace_timing: bool = False
 
 
 class BundleSpeechService:
@@ -178,6 +186,7 @@ class BundleSpeechService:
 
     def stream_synthesize(self, session, text: str):
         profile = self.deps.voice_registry.resolve(session.options.voice, model=session.options.model)
+        stream_started_at = time.perf_counter()
         generator = StreamingCustomVoiceGenerator(
             self.deps.loaded_bundle.qwen3tts,
             text=text,
@@ -190,7 +199,29 @@ class BundleSpeechService:
             first_chunk_steps=self.deps.first_chunk_steps,
             crossfade_samples=self.deps.crossfade_samples,
         )
-        yield from generator.iter_audio_chunks()
+        first_chunk_at: float | None = None
+        total_audio_bytes = 0
+        try:
+            for chunk in generator.iter_audio_chunks():
+                if first_chunk_at is None and chunk:
+                    first_chunk_at = time.perf_counter()
+                total_audio_bytes += len(chunk)
+                yield chunk
+        finally:
+            if self.deps.trace_timing:
+                total_elapsed_ms = (time.perf_counter() - stream_started_at) * 1000.0
+                runtime_metrics = dict(session.state.last_generation_metrics)
+                logger.info(
+                    "stream_timing session=%s voice=%s text_chars=%s init_ms=%.2f first_chunk_ms=%s total_ms=%.2f audio_bytes=%s metrics=%s",
+                    getattr(session, "session_id", "unknown"),
+                    session.options.voice,
+                    len(text),
+                    runtime_metrics.get("init_total_ms") or 0.0,
+                    round((first_chunk_at - stream_started_at) * 1000.0, 2) if first_chunk_at is not None else None,
+                    total_elapsed_ms,
+                    total_audio_bytes,
+                    runtime_metrics,
+                )
 
     def stream_synthesize_http(self, *, text: str, model: str, voice: str, language_type: str, instructions: str = ""):
         runtime_session = self.build_runtime_session(
@@ -269,6 +300,7 @@ def build_dependencies(
         first_chunk_steps=config.first_chunk_steps,
         crossfade_samples=config.crossfade_samples,
         samples_per_step=config.samples_per_step,
+        trace_timing=config.trace_timing,
     )
 
 
@@ -412,6 +444,7 @@ def create_app(
                     ),
                     ensure_ascii=False,
                 ) + "\n"
+                await asyncio.sleep(0)
 
             asset = service.audio_store.save(
                 pcm16le_bytes_to_wav_bytes(bytes(collected_audio), sample_rate=stream_sample_rate),
@@ -427,6 +460,7 @@ def create_app(
                 ),
                 ensure_ascii=False,
             ) + "\n"
+            await asyncio.sleep(0)
 
         return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
 
@@ -436,12 +470,14 @@ def create_app(
         adapter = service.create_protocol_adapter()
         for event in adapter.open_connection(service.build_initial_session_options()):
             await websocket.send_json(event)
+            await asyncio.sleep(0)
 
         try:
             while True:
                 event = await websocket.receive_json()
                 for response_event in adapter.iter_events(event):
                     await websocket.send_json(response_event)
+                    await asyncio.sleep(0)
         except WebSocketDisconnect:
             return
 
@@ -461,13 +497,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--audio_chunk_duration_ms", type=int, default=320)
     parser.add_argument("--chunk_steps", type=int, default=4)
     parser.add_argument("--left_context_steps", type=int, default=25)
-    parser.add_argument("--first_chunk_steps", type=int, default=None)
+    parser.add_argument("--first_chunk_steps", type=int, default=1)
     parser.add_argument("--crossfade_samples", type=int, default=0)
     parser.add_argument("--samples_per_step", type=int, default=1920)
     parser.add_argument("--device_map", default="cuda:0")
     parser.add_argument("--torch_dtype", default="bfloat16")
     parser.add_argument("--attn_implementation", default="sdpa")
     parser.add_argument("--local_files_only", action="store_true")
+    parser.add_argument("--trace_timing", action="store_true")
     return parser
 
 
@@ -494,7 +531,9 @@ def main() -> None:
         torch_dtype=args.torch_dtype,
         attn_implementation=args.attn_implementation,
         local_files_only=args.local_files_only,
+        trace_timing=args.trace_timing,
     )
+    logging.basicConfig(level=logging.INFO if config.trace_timing else logging.WARNING)
     app = create_app(config=config)
     uvicorn.run(app, host=config.host, port=config.port)
 

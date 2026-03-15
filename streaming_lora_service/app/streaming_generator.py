@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
 from typing import Any, Iterator, Sequence
 
 import torch
@@ -30,6 +31,15 @@ class StreamingGenerationMetrics:
     emitted_chunks: int = 0
     first_emitted_step: int | None = None
     finish_reason: str | None = None
+    prompt_build_ms: float | None = None
+    prefill_ms: float | None = None
+    state_restore_ms: float | None = None
+    init_total_ms: float | None = None
+    first_step_ms: float | None = None
+    first_decode_ms: float | None = None
+    first_chunk_ready_ms: float | None = None
+    total_step_ms: float = 0.0
+    total_decode_ms: float = 0.0
 
 
 @dataclass
@@ -62,12 +72,14 @@ class StreamingCustomVoiceGenerator:
         crossfade_samples: int = 0,
         **generate_kwargs: Any,
     ) -> None:
+        self._created_at = time.perf_counter()
         self.qwen3tts = qwen3tts
         self.text = text
         self.speaker = speaker
         self.language = language
         self.instruct = instruct
         self.runtime_session = runtime_session if isinstance(runtime_session, RuntimeSession) else None
+        prompt_started_at = time.perf_counter()
         self.prompt = build_custom_voice_talker_prompt(
             qwen3tts,
             text=text,
@@ -78,6 +90,7 @@ class StreamingCustomVoiceGenerator:
             **generate_kwargs,
         )
         self.metrics = StreamingGenerationMetrics()
+        self.metrics.prompt_build_ms = (time.perf_counter() - prompt_started_at) * 1000.0
         decoder_config = IncrementalDecoderConfig(
             chunk_steps=chunk_steps,
             left_context_steps=left_context_steps,
@@ -91,16 +104,21 @@ class StreamingCustomVoiceGenerator:
             instructions=instruct,
         ) else None
         if resumable_session is not None:
+            state_restore_started_at = time.perf_counter()
             existing_decoder = resumable_session.state.incremental_decoder
             if not isinstance(existing_decoder, IncrementalAudioDecoder):
                 raise StreamingGenerationError("Runtime session stored an invalid incremental decoder")
             self.decoder = existing_decoder
             self._state = self._state_from_runtime_session(resumable_session)
+            self.metrics.state_restore_ms = (time.perf_counter() - state_restore_started_at) * 1000.0
         else:
             self.decoder = IncrementalAudioDecoder(decoder_config)
             if self.runtime_session is not None:
                 self.runtime_session.reset_generation_state()
+            prefill_started_at = time.perf_counter()
             self._state = self._prefill()
+            self.metrics.prefill_ms = (time.perf_counter() - prefill_started_at) * 1000.0
+        self.metrics.init_total_ms = (time.perf_counter() - self._created_at) * 1000.0
         self._bytes_per_step = self.prompt.decode_upsample_rate * 2
         self._sync_runtime_session()
 
@@ -126,12 +144,24 @@ class StreamingCustomVoiceGenerator:
         if self.state.finished:
             return None
 
+        step_started_at = time.perf_counter()
         next_token = self._sample_next_codec_token(self.state.next_logits)
         token_id = int(next_token.item())
         if token_id == self.prompt.sampling.eos_token_id:
             self.metrics.finish_reason = "eos"
             self.state.finished = True
+            decode_started_at = time.perf_counter()
             chunk = self._emit_ready_audio(force=True, finished=True)
+            decode_elapsed_ms = (time.perf_counter() - decode_started_at) * 1000.0
+            self.metrics.total_decode_ms += decode_elapsed_ms
+            if chunk is not None and self.metrics.first_decode_ms is None:
+                self.metrics.first_decode_ms = decode_elapsed_ms
+            step_elapsed_ms = (time.perf_counter() - step_started_at) * 1000.0
+            self.metrics.total_step_ms += step_elapsed_ms
+            if self.metrics.first_step_ms is None:
+                self.metrics.first_step_ms = step_elapsed_ms
+            if chunk is not None and chunk.audio_bytes and self.metrics.first_chunk_ready_ms is None:
+                self.metrics.first_chunk_ready_ms = (time.perf_counter() - self._created_at) * 1000.0
             self._sync_runtime_session()
             return chunk
 
@@ -152,11 +182,33 @@ class StreamingCustomVoiceGenerator:
         if self.metrics.generated_steps >= self.prompt.sampling.max_new_tokens:
             self.metrics.finish_reason = "length"
             self.state.finished = True
+            decode_started_at = time.perf_counter()
             chunk = self._emit_ready_audio(force=True, finished=True)
+            decode_elapsed_ms = (time.perf_counter() - decode_started_at) * 1000.0
+            self.metrics.total_decode_ms += decode_elapsed_ms
+            if chunk is not None and self.metrics.first_decode_ms is None:
+                self.metrics.first_decode_ms = decode_elapsed_ms
+            step_elapsed_ms = (time.perf_counter() - step_started_at) * 1000.0
+            self.metrics.total_step_ms += step_elapsed_ms
+            if self.metrics.first_step_ms is None:
+                self.metrics.first_step_ms = step_elapsed_ms
+            if chunk is not None and chunk.audio_bytes and self.metrics.first_chunk_ready_ms is None:
+                self.metrics.first_chunk_ready_ms = (time.perf_counter() - self._created_at) * 1000.0
             self._sync_runtime_session()
             return chunk
 
+        decode_started_at = time.perf_counter()
         chunk = self._emit_ready_audio(force=False, finished=False)
+        decode_elapsed_ms = (time.perf_counter() - decode_started_at) * 1000.0
+        self.metrics.total_decode_ms += decode_elapsed_ms
+        if chunk is not None and self.metrics.first_decode_ms is None:
+            self.metrics.first_decode_ms = decode_elapsed_ms
+        step_elapsed_ms = (time.perf_counter() - step_started_at) * 1000.0
+        self.metrics.total_step_ms += step_elapsed_ms
+        if self.metrics.first_step_ms is None:
+            self.metrics.first_step_ms = step_elapsed_ms
+        if chunk is not None and chunk.audio_bytes and self.metrics.first_chunk_ready_ms is None:
+            self.metrics.first_chunk_ready_ms = (time.perf_counter() - self._created_at) * 1000.0
         self._sync_runtime_session()
         return chunk
 
@@ -300,6 +352,15 @@ class StreamingCustomVoiceGenerator:
                 "emitted_chunks": self.metrics.emitted_chunks,
                 "first_emitted_step": self.metrics.first_emitted_step,
                 "finish_reason": self.metrics.finish_reason,
+                "prompt_build_ms": round(self.metrics.prompt_build_ms, 2) if self.metrics.prompt_build_ms is not None else None,
+                "prefill_ms": round(self.metrics.prefill_ms, 2) if self.metrics.prefill_ms is not None else None,
+                "state_restore_ms": round(self.metrics.state_restore_ms, 2) if self.metrics.state_restore_ms is not None else None,
+                "init_total_ms": round(self.metrics.init_total_ms, 2) if self.metrics.init_total_ms is not None else None,
+                "first_step_ms": round(self.metrics.first_step_ms, 2) if self.metrics.first_step_ms is not None else None,
+                "first_decode_ms": round(self.metrics.first_decode_ms, 2) if self.metrics.first_decode_ms is not None else None,
+                "first_chunk_ready_ms": round(self.metrics.first_chunk_ready_ms, 2) if self.metrics.first_chunk_ready_ms is not None else None,
+                "total_step_ms": round(self.metrics.total_step_ms, 2),
+                "total_decode_ms": round(self.metrics.total_decode_ms, 2),
                 "decoder": self.decoder.snapshot(),
             },
         )
