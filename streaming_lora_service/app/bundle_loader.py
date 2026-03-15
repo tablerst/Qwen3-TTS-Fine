@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from lora_finetuning.common import (
@@ -18,6 +18,36 @@ class BundleLoaderError(RuntimeError):
     """Raised when a LoRA bundle cannot be resolved or loaded."""
 
 
+def _candidate_workspace_roots(bundle_path: Path) -> list[Path]:
+    return [bundle_path, *bundle_path.parents]
+
+
+def _resolve_local_model_path(base_model_ref: str, bundle_path: Path) -> str:
+    base_model_path = Path(base_model_ref)
+    if base_model_path.exists():
+        return str(base_model_path)
+
+    windows_path = PureWindowsPath(base_model_ref)
+    suffix_candidates: list[Path] = []
+    parts = list(windows_path.parts)
+    if "models" in parts:
+        models_index = parts.index("models")
+        suffix_candidates.append(Path(*parts[models_index:]))
+    if windows_path.name:
+        suffix_candidates.append(Path("models") / windows_path.name)
+
+    if not base_model_path.is_absolute():
+        suffix_candidates.append(base_model_path)
+
+    for workspace_root in _candidate_workspace_roots(bundle_path.resolve()):
+        for suffix in suffix_candidates:
+            candidate = workspace_root / suffix
+            if candidate.exists():
+                return str(candidate)
+
+    return base_model_ref
+
+
 def resolve_bundle_artifacts(
     bundle_dir: str | Path,
     *,
@@ -31,7 +61,10 @@ def resolve_bundle_artifacts(
     manifest_path = bundle_path / "manifest.json"
     manifest = load_json(manifest_path)
 
-    resolved_base_model = base_model or str(manifest["base_model_path"])
+    resolved_base_model = _resolve_local_model_path(
+        base_model or str(manifest["base_model_path"]),
+        bundle_path,
+    )
     resolved_adapter_dir = Path(adapter_dir) if adapter_dir else bundle_path / manifest.get("adapter_dir", "adapter")
     resolved_config_patch = (
         Path(config_patch_file)

@@ -70,6 +70,27 @@ class BundleLoaderTests(unittest.TestCase):
         )
         return bundle_dir
 
+    def build_repo_style_bundle(self, *, base_model_path: str) -> tuple[Path, Path]:
+        repo_root = self.make_temp_dir() / "Qwen3-TTS-Fine"
+        bundle_dir = repo_root / "outputs" / "bundle"
+        model_dir = repo_root / "models" / "Qwen3-TTS-12Hz-1.7B-Base"
+        adapter_dir = bundle_dir / "adapter"
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+        model_dir.mkdir(parents=True, exist_ok=True)
+        (adapter_dir / "adapter_model.safetensors").write_bytes(b"stub")
+        (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+        save_json(make_config_patch("inference_speaker", 3000), bundle_dir / "config_patch.json")
+        save_speaker_patch(bundle_dir / "speaker_embedding.safetensors", 3000, torch.randn(8))
+        save_json(
+            build_bundle_manifest(
+                base_model_path=base_model_path,
+                speaker_name="inference_speaker",
+                speaker_id=3000,
+            ),
+            bundle_dir / "manifest.json",
+        )
+        return bundle_dir, model_dir
+
     def test_resolve_bundle_artifacts_uses_manifest_defaults(self) -> None:
         bundle_dir = self.build_bundle()
 
@@ -101,6 +122,21 @@ class BundleLoaderTests(unittest.TestCase):
         self.assertEqual(loaded.tts_model_type, "custom_voice")
         self.assertTrue(loaded.qwen3tts.model.eval_called)
         self.assertIn("inference_speaker", loaded.qwen3tts.model.supported_speakers)
+
+    def test_load_bundle_resolves_windows_manifest_path_to_local_models_dir(self) -> None:
+        bundle_dir, model_dir = self.build_repo_style_bundle(
+            base_model_path="E:/JetBrains/Pycharm/Qwen3-TTS-Fine/models/Qwen3-TTS-12Hz-1.7B-Base"
+        )
+        loader = BundleLoader(model_factory=FakeFactory)
+
+        with patch("streaming_lora_service.app.bundle_loader.load_lora_adapter"):
+            loader.load(bundle_dir, device_map="cpu", torch_dtype="float32")
+
+        self.assertIsNotNone(FakeFactory.call_args)
+        if FakeFactory.call_args is None:
+            self.fail("FakeFactory.call_args should have been populated by from_pretrained")
+        base_model, _ = FakeFactory.call_args
+        self.assertEqual(base_model, str(model_dir))
 
 
 if __name__ == "__main__":

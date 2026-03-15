@@ -252,7 +252,7 @@ async def run_single_iteration(
     save_audio_dir: Path | None,
 ) -> BenchmarkRunMetrics:
     connect_started = time.perf_counter()
-    async with websockets.connect(ws_url, max_size=None, open_timeout=timeout_s) as ws:
+    async with websockets.connect(ws_url, max_size=None, open_timeout=timeout_s, proxy=None) as ws:
         connected_at = time.perf_counter()
         created_event = await recv_json(ws, timeout_s=timeout_s)
         if created_event.get("type") != "session.created":
