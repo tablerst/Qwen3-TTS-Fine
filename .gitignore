@@ -26,3 +26,5 @@ env/
 /models/*
 /outputs/*
 /benchmark/**/*.wav
+vllm_omni_service/.venv/*
+vllm_omni_service/logs/*
