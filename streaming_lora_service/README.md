@@ -319,10 +319,18 @@ python -m streaming_lora_service.quality_regression --bundle_dir <path_to_bundle
 - 对这个纯音频 WS 接口来说，`TTFT` 可以理解为“首个音频增量块可用时间”；
 - 如果你更习惯叫 `TTFB` / `TTFA`，这里语义上是同一件事：**首个 `response.audio.delta` 到达时间**。
 
+### benchmark 数据落盘约定
+
+- 根目录统一使用 `benchmark/` 保存每次 benchmark 的原始产物；
+- 单次运行目录命名为 `benchmark/<summary>_vN/`；
+- `<summary>` 建议使用小写下划线，表达本轮 benchmark 的主题，例如 `candidate8_v2_ws`、`candidate8_v2_http`、`candidate8_v2_ws_load`；
+- `vN` 从 `v1` 开始递增；同主题重跑时创建新版本目录，不覆盖旧数据；
+- `streaming_lora_service/docs/validation/` 继续用于沉淀经过整理的验证结论，不作为高频 benchmark 原始数据的默认落点。
+
 示例：
 
 ```text
-qwen-tts-ws-benchmark --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --iterations 5 --warmup 1 --output_path streaming_lora_service/docs/validation/ws_benchmark_metrics.json
+qwen-tts-ws-benchmark --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --iterations 5 --warmup 1 --output_path benchmark/candidate8_v2_ws_v1/ws_benchmark_metrics.json --save_audio_dir benchmark/candidate8_v2_ws_v1/audio
 ```
 
 如果要指定文本：
@@ -357,7 +365,7 @@ qwen-tts-ws-benchmark --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --voice ya
 示例：
 
 ```text
-qwen-tts-http-benchmark --http_base_url http://127.0.0.1:9010 --endpoint /v1/tts --iterations 5 --warmup 1 --output_path streaming_lora_service/docs/validation/http_benchmark_metrics.json
+qwen-tts-http-benchmark --http_base_url http://127.0.0.1:9010 --endpoint /v1/tts --iterations 5 --warmup 1 --output_path benchmark/candidate8_v2_http_v1/http_benchmark_metrics.json --save_audio_dir benchmark/candidate8_v2_http_v1/audio
 ```
 
 单条文本示例：
@@ -397,13 +405,13 @@ qwen-tts-http-benchmark --http_base_url http://127.0.0.1:9010 --voice yachiyo_ca
 HTTP 并发示例：
 
 ```text
-qwen-tts-load-test --transport http-streaming --http_base_url http://127.0.0.1:9010 --concurrency 4 --requests 8 --text "你好，这是一次并发 HTTP streaming 压测。" --output_path streaming_lora_service/docs/validation/http_load_test_metrics.json
+qwen-tts-load-test --transport http-streaming --http_base_url http://127.0.0.1:9010 --concurrency 4 --requests 8 --text "你好，这是一次并发 HTTP streaming 压测。" --output_path benchmark/candidate8_v2_http_load_v1/http_load_test_metrics.json
 ```
 
 WS 并发示例：
 
 ```text
-qwen-tts-load-test --transport ws --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --concurrency 4 --requests 8 --text "你好，这是一次并发 WebSocket 压测。" --output_path streaming_lora_service/docs/validation/ws_load_test_metrics.json
+qwen-tts-load-test --transport ws --ws_url ws://127.0.0.1:9010/api-ws/v1/realtime --concurrency 4 --requests 8 --text "你好，这是一次并发 WebSocket 压测。" --output_path benchmark/candidate8_v2_ws_load_v1/ws_load_test_metrics.json
 ```
 
 建议：

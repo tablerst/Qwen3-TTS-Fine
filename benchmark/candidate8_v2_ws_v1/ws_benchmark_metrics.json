@@ -1,0 +1,512 @@
+{
+  "config": {
+    "ws_url": "ws://127.0.0.1:9010/api-ws/v1/realtime",
+    "http_base_url": "http://127.0.0.1:9010",
+    "model": "qwen3-tts-flash-realtime",
+    "voice": "yachiyo_candidate8_v2",
+    "voice_resolution": {
+      "voice": "yachiyo_candidate8_v2",
+      "source": "requested"
+    },
+    "mode": "commit",
+    "sample_rate": 24000,
+    "response_format": "pcm",
+    "iterations": 5,
+    "warmup": 1,
+    "timeout": 600.0,
+    "optimize_instructions": false
+  },
+  "preflight": {
+    "health": {
+      "status": "ok",
+      "model": "qwen3-tts-flash-realtime",
+      "default_voice": "yachiyo_candidate8_v2"
+    },
+    "voices": {
+      "default_voice": "yachiyo_candidate8_v2",
+      "data": [
+        {
+          "voice": "yachiyo_candidate8_v2",
+          "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+          "language_type": "Auto",
+          "description": "Candidate8 multilingual warmstart v2 service mainline candidate",
+          "supported_models": [
+            "qwen3-tts-flash-realtime"
+          ]
+        },
+        {
+          "voice": "yachiyo_formal",
+          "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+          "language_type": "Auto",
+          "description": "Backward-compatible alias mapped to the current candidate8 v2 service bundle",
+          "supported_models": [
+            "qwen3-tts-flash-realtime"
+          ]
+        }
+      ]
+    },
+    "voice_selection": {
+      "voice": "yachiyo_candidate8_v2",
+      "source": "requested"
+    }
+  },
+  "summary": {
+    "case_count": 2,
+    "success_count": 10,
+    "failure_count": 0,
+    "overall": {
+      "run_count": 10,
+      "ttft_ms": {
+        "count": 10,
+        "min": 275.9921,
+        "max": 408.4467,
+        "mean": 321.1347,
+        "median": 302.9562,
+        "stdev": 45.5283,
+        "p50": 302.9562,
+        "p95": 401.2292
+      },
+      "response_created_ms": {
+        "count": 10,
+        "min": 0.483,
+        "max": 0.6785,
+        "mean": 0.5847,
+        "median": 0.5577,
+        "stdev": 0.064,
+        "p50": 0.5577,
+        "p95": 0.6726
+      },
+      "total_elapsed_ms": {
+        "count": 10,
+        "min": 21900.103,
+        "max": 25312.8387,
+        "mean": 23772.3872,
+        "median": 23939.392,
+        "stdev": 1013.94,
+        "p50": 23939.392,
+        "p95": 25016.5873
+      },
+      "audio_duration_s": {
+        "count": 10,
+        "min": 7.68,
+        "max": 10.0,
+        "mean": 8.752,
+        "median": 8.72,
+        "stdev": 0.7157,
+        "p50": 8.72,
+        "p95": 9.748
+      },
+      "rtf": {
+        "count": 10,
+        "min": 2.5313,
+        "max": 3.2073,
+        "mean": 2.7308,
+        "median": 2.6362,
+        "stdev": 0.2367,
+        "p50": 2.6362,
+        "p95": 3.1649
+      },
+      "audio_chunks": {
+        "count": 10,
+        "min": 25.0,
+        "max": 32.0,
+        "mean": 28.3,
+        "median": 28.0,
+        "stdev": 2.2632,
+        "p50": 28.0,
+        "p95": 31.55
+      },
+      "total_audio_bytes": {
+        "count": 10,
+        "min": 368640.0,
+        "max": 480000.0,
+        "mean": 420096.0,
+        "median": 418560.0,
+        "stdev": 34355.5434,
+        "p50": 418560.0,
+        "p95": 467904.0
+      }
+    }
+  },
+  "cases": {
+    "zh_formal": {
+      "case": {
+        "id": "zh_formal",
+        "text": "你好，欢迎使用 Qwen3-TTS WebSocket benchmark。这是一段用于测量首包时延与实时因子的中文测试文本。",
+        "language_type": "Chinese",
+        "instructions": "正式，平静，清晰。"
+      },
+      "summary": {
+        "run_count": 5,
+        "ttft_ms": {
+          "count": 5,
+          "min": 275.9921,
+          "max": 312.7113,
+          "mean": 294.2166,
+          "median": 293.8948,
+          "stdev": 13.3935,
+          "p50": 293.8948,
+          "p95": 309.9475
+        },
+        "response_created_ms": {
+          "count": 5,
+          "min": 0.5353,
+          "max": 0.6785,
+          "mean": 0.5982,
+          "median": 0.5595,
+          "stdev": 0.0681,
+          "p50": 0.5595,
+          "p95": 0.6759
+        },
+        "total_elapsed_ms": {
+          "count": 5,
+          "min": 21900.103,
+          "max": 25312.8387,
+          "mean": 23710.0109,
+          "median": 23791.0872,
+          "stdev": 1230.588,
+          "p50": 23791.0872,
+          "p95": 25067.8103
+        },
+        "audio_duration_s": {
+          "count": 5,
+          "min": 8.4,
+          "max": 10.0,
+          "mean": 9.216,
+          "median": 9.2,
+          "stdev": 0.5835,
+          "p50": 9.2,
+          "p95": 9.888
+        },
+        "rtf": {
+          "count": 5,
+          "min": 2.5313,
+          "max": 2.6072,
+          "mean": 2.5742,
+          "median": 2.586,
+          "stdev": 0.0316,
+          "p50": 2.586,
+          "p95": 2.6047
+        },
+        "audio_chunks": {
+          "count": 5,
+          "min": 27.0,
+          "max": 32.0,
+          "mean": 29.8,
+          "median": 30.0,
+          "stdev": 1.9235,
+          "p50": 30.0,
+          "p95": 31.8
+        },
+        "total_audio_bytes": {
+          "count": 5,
+          "min": 403200.0,
+          "max": 480000.0,
+          "mean": 442368.0,
+          "median": 441600.0,
+          "stdev": 28008.3188,
+          "p50": 441600.0,
+          "p95": 474624.0
+        }
+      },
+      "runs": [
+        {
+          "case_id": "zh_formal",
+          "iteration": 1,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.6264,
+          "session_created_ms": 0.0182,
+          "session_update_ms": 0.6891,
+          "commit_ack_ms": 0.5359,
+          "response_created_ms": 0.5595,
+          "ttft_ms": 293.8948,
+          "audio_done_ms": 25312.8011,
+          "total_elapsed_ms": 25312.8387,
+          "total_audio_bytes": 480000,
+          "audio_duration_s": 10.0,
+          "rtf": 2.531284,
+          "audio_chunks": 32,
+          "usage_characters": 63
+        },
+        {
+          "case_id": "zh_formal",
+          "iteration": 2,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.6172,
+          "session_created_ms": 0.0626,
+          "session_update_ms": 0.5498,
+          "commit_ack_ms": 0.4999,
+          "response_created_ms": 0.5523,
+          "ttft_ms": 275.9921,
+          "audio_done_ms": 21900.0235,
+          "total_elapsed_ms": 21900.103,
+          "total_audio_bytes": 403200,
+          "audio_duration_s": 8.4,
+          "rtf": 2.607155,
+          "audio_chunks": 27,
+          "usage_characters": 63
+        },
+        {
+          "case_id": "zh_formal",
+          "iteration": 3,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.8379,
+          "session_created_ms": 0.0262,
+          "session_update_ms": 0.5895,
+          "commit_ack_ms": 0.6086,
+          "response_created_ms": 0.6654,
+          "ttft_ms": 298.8925,
+          "audio_done_ms": 23791.0254,
+          "total_elapsed_ms": 23791.0872,
+          "total_audio_bytes": 441600,
+          "audio_duration_s": 9.2,
+          "rtf": 2.585988,
+          "audio_chunks": 30,
+          "usage_characters": 63
+        },
+        {
+          "case_id": "zh_formal",
+          "iteration": 4,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.2681,
+          "session_created_ms": 0.0368,
+          "session_update_ms": 0.6156,
+          "commit_ack_ms": 0.4718,
+          "response_created_ms": 0.5353,
+          "ttft_ms": 289.5923,
+          "audio_done_ms": 23458.2313,
+          "total_elapsed_ms": 23458.3287,
+          "total_audio_bytes": 433920,
+          "audio_duration_s": 9.04,
+          "rtf": 2.594948,
+          "audio_chunks": 29,
+          "usage_characters": 63
+        },
+        {
+          "case_id": "zh_formal",
+          "iteration": 5,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.0261,
+          "session_created_ms": 0.0749,
+          "session_update_ms": 0.822,
+          "commit_ack_ms": 0.6033,
+          "response_created_ms": 0.6785,
+          "ttft_ms": 312.7113,
+          "audio_done_ms": 24087.6665,
+          "total_elapsed_ms": 24087.6967,
+          "total_audio_bytes": 453120,
+          "audio_duration_s": 9.44,
+          "rtf": 2.551663,
+          "audio_chunks": 31,
+          "usage_characters": 63
+        }
+      ],
+      "failure_count": 0
+    },
+    "ja_formal": {
+      "case": {
+        "id": "ja_formal",
+        "text": "こんにちは。こちらは WebSocket ベンチマーク用の日本語テキストで、TTFT と RTF を測定します。",
+        "language_type": "Japanese",
+        "instructions": "落ち着いて、丁寧に。"
+      },
+      "summary": {
+        "run_count": 5,
+        "ttft_ms": {
+          "count": 5,
+          "min": 290.0821,
+          "max": 408.4467,
+          "mean": 348.0527,
+          "median": 342.3073,
+          "stdev": 51.7013,
+          "p50": 342.3073,
+          "p95": 405.2389
+        },
+        "response_created_ms": {
+          "count": 5,
+          "min": 0.483,
+          "max": 0.6551,
+          "mean": 0.5711,
+          "median": 0.556,
+          "stdev": 0.0642,
+          "p50": 0.556,
+          "p95": 0.6452
+        },
+        "total_elapsed_ms": {
+          "count": 5,
+          "min": 22793.2731,
+          "max": 24654.5022,
+          "mean": 23834.7634,
+          "median": 24093.6044,
+          "stdev": 888.3093,
+          "p50": 24093.6044,
+          "p95": 24650.064
+        },
+        "audio_duration_s": {
+          "count": 5,
+          "min": 7.68,
+          "max": 9.04,
+          "mean": 8.288,
+          "median": 8.4,
+          "stdev": 0.5234,
+          "p50": 8.4,
+          "p95": 8.912
+        },
+        "rtf": {
+          "count": 5,
+          "min": 2.6652,
+          "max": 3.2073,
+          "mean": 2.8874,
+          "median": 2.7381,
+          "stdev": 0.2525,
+          "p50": 2.7381,
+          "p95": 3.1885
+        },
+        "audio_chunks": {
+          "count": 5,
+          "min": 25.0,
+          "max": 29.0,
+          "mean": 26.8,
+          "median": 27.0,
+          "stdev": 1.4832,
+          "p50": 27.0,
+          "p95": 28.6
+        },
+        "total_audio_bytes": {
+          "count": 5,
+          "min": 368640.0,
+          "max": 433920.0,
+          "mean": 397824.0,
+          "median": 403200.0,
+          "stdev": 25121.9362,
+          "p50": 403200.0,
+          "p95": 427776.0
+        }
+      },
+      "runs": [
+        {
+          "case_id": "ja_formal",
+          "iteration": 1,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.8681,
+          "session_created_ms": 0.0371,
+          "session_update_ms": 0.6351,
+          "commit_ack_ms": 0.5917,
+          "response_created_ms": 0.6056,
+          "ttft_ms": 307.0199,
+          "audio_done_ms": 24093.3502,
+          "total_elapsed_ms": 24093.6044,
+          "total_audio_bytes": 433920,
+          "audio_duration_s": 9.04,
+          "rtf": 2.665222,
+          "audio_chunks": 29,
+          "usage_characters": 56
+        },
+        {
+          "case_id": "ja_formal",
+          "iteration": 2,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.7063,
+          "session_created_ms": 0.0324,
+          "session_update_ms": 0.6371,
+          "commit_ack_ms": 0.6037,
+          "response_created_ms": 0.6551,
+          "ttft_ms": 392.4077,
+          "audio_done_ms": 24654.4722,
+          "total_elapsed_ms": 24654.5022,
+          "total_audio_bytes": 380160,
+          "audio_duration_s": 7.92,
+          "rtf": 3.112942,
+          "audio_chunks": 26,
+          "usage_characters": 56
+        },
+        {
+          "case_id": "ja_formal",
+          "iteration": 3,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.8599,
+          "session_created_ms": 0.0195,
+          "session_update_ms": 0.5622,
+          "commit_ack_ms": 0.4853,
+          "response_created_ms": 0.5559,
+          "ttft_ms": 342.3073,
+          "audio_done_ms": 24632.2834,
+          "total_elapsed_ms": 24632.3112,
+          "total_audio_bytes": 368640,
+          "audio_duration_s": 7.68,
+          "rtf": 3.207332,
+          "audio_chunks": 25,
+          "usage_characters": 56
+        },
+        {
+          "case_id": "ja_formal",
+          "iteration": 4,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.2834,
+          "session_created_ms": 0.1206,
+          "session_update_ms": 0.556,
+          "commit_ack_ms": 0.4688,
+          "response_created_ms": 0.483,
+          "ttft_ms": 408.4467,
+          "audio_done_ms": 22793.1858,
+          "total_elapsed_ms": 22793.2731,
+          "total_audio_bytes": 403200,
+          "audio_duration_s": 8.4,
+          "rtf": 2.713485,
+          "audio_chunks": 27,
+          "usage_characters": 56
+        },
+        {
+          "case_id": "ja_formal",
+          "iteration": 5,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.1871,
+          "session_created_ms": 0.0221,
+          "session_update_ms": 0.5683,
+          "commit_ack_ms": 0.5042,
+          "response_created_ms": 0.556,
+          "ttft_ms": 290.0821,
+          "audio_done_ms": 22999.9956,
+          "total_elapsed_ms": 23000.1263,
+          "total_audio_bytes": 403200,
+          "audio_duration_s": 8.4,
+          "rtf": 2.73811,
+          "audio_chunks": 27,
+          "usage_characters": 56
+        }
+      ],
+      "failure_count": 0
+    }
+  },
+  "failures": []
+}

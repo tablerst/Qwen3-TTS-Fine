@@ -1,0 +1,60 @@
+<frozen runpy>:128: RuntimeWarning: 'streaming_lora_service.app.server' found in sys.modules after import of package 'streaming_lora_service.app', but prior to execution of 'streaming_lora_service.app.server'; this may result in unpredictable behaviour
+/bin/sh: 1: sox: not found
+WARNING:sox:SoX could not be found!
+
+    If you do not have SoX, proceed here:
+     - - - http://sox.sourceforge.net/ - - -
+
+    If you do (or think that you should) have SoX, double-check your
+    path variables.
+    
+INFO:     Started server process [3866]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:9010 (Press CTRL+C to quit)
+
+********
+Warning: flash-attn is not installed. Will only run the manual PyTorch version. Please install flash-attn for faster inference.
+********
+ 
+INFO:     127.0.0.1:47858 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45526 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45530 - "GET /v1/voices HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47216 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47216 - "GET /v1/voices HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47230 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:44754 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:45646 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:47172 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:45954 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:48666 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:46426 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:47514 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:44880 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:45452 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:45584 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:47200 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
