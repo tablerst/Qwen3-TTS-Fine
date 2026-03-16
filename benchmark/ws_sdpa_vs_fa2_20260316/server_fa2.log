@@ -1,0 +1,9 @@
+<frozen runpy>:128: RuntimeWarning: 'streaming_lora_service.app.server' found in sys.modules after import of package 'streaming_lora_service.app', but prior to execution of 'streaming_lora_service.app.server'; this may result in unpredictable behaviour
+You are attempting to use Flash Attention 2 without specifying a torch dtype. This might lead to unexpected behaviour
+WARNING:__main__:attention_backend_snapshot={"cuda_available": true, "device_map": "cuda:0", "model_class": "Qwen3TTSForConditionalGeneration", "model_config_attn_implementation": "flash_attention_2", "requested_attn_implementation": "flash_attention_2", "sdpa_runtime_flags": {"flash_sdp_enabled": true, "math_sdp_enabled": true, "mem_efficient_sdp_enabled": true}, "speech_tokenizer_attn_implementation": "sdpa", "speech_tokenizer_class": "Qwen3TTSTokenizer", "torch_dtype": "bfloat16"}
+INFO:     Started server process [9767]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 98] error while attempting to bind on address ('127.0.0.1', 9012): [errno 98] address already in use
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

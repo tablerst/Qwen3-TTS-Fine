@@ -1,0 +1,386 @@
+{
+  "config": {
+    "ws_url": "ws://127.0.0.1:19012/api-ws/v1/realtime",
+    "http_base_url": "http://127.0.0.1:19012",
+    "model": "qwen3-tts-flash-realtime",
+    "voice": "yachiyo_candidate8_v2",
+    "voice_resolution": {
+      "voice": "yachiyo_candidate8_v2",
+      "source": "requested"
+    },
+    "mode": "commit",
+    "sample_rate": 24000,
+    "response_format": "pcm",
+    "iterations": 2,
+    "warmup": 1,
+    "timeout": 600.0,
+    "optimize_instructions": false
+  },
+  "preflight": {
+    "health": {
+      "status": "ok",
+      "model": "qwen3-tts-flash-realtime",
+      "default_voice": "yachiyo_candidate8_v2"
+    },
+    "voices": {
+      "default_voice": "yachiyo_candidate8_v2",
+      "data": [
+        {
+          "voice": "yachiyo_candidate8_v2",
+          "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+          "language_type": "Auto",
+          "description": "Candidate8 multilingual warmstart v2 service mainline candidate",
+          "supported_models": [
+            "qwen3-tts-flash-realtime"
+          ]
+        },
+        {
+          "voice": "yachiyo_formal",
+          "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+          "language_type": "Auto",
+          "description": "Backward-compatible alias mapped to the current candidate8 v2 service bundle",
+          "supported_models": [
+            "qwen3-tts-flash-realtime"
+          ]
+        }
+      ]
+    },
+    "voice_selection": {
+      "voice": "yachiyo_candidate8_v2",
+      "source": "requested"
+    }
+  },
+  "summary": {
+    "case_count": 2,
+    "success_count": 4,
+    "failure_count": 0,
+    "overall": {
+      "run_count": 4,
+      "ttft_ms": {
+        "count": 4,
+        "min": 315.4383,
+        "max": 334.4672,
+        "mean": 325.6556,
+        "median": 326.3585,
+        "stdev": 7.8207,
+        "p50": 326.3585,
+        "p95": 333.3233
+      },
+      "response_created_ms": {
+        "count": 4,
+        "min": 0.5854,
+        "max": 0.9839,
+        "mean": 0.7467,
+        "median": 0.7088,
+        "stdev": 0.1709,
+        "p50": 0.7088,
+        "p95": 0.9479
+      },
+      "total_elapsed_ms": {
+        "count": 4,
+        "min": 24755.3571,
+        "max": 26451.7691,
+        "mean": 25804.0891,
+        "median": 26004.6151,
+        "stdev": 764.4917,
+        "p50": 26004.6151,
+        "p95": 26426.2643
+      },
+      "audio_duration_s": {
+        "count": 4,
+        "min": 8.8,
+        "max": 9.28,
+        "mean": 8.94,
+        "median": 8.84,
+        "stdev": 0.2298,
+        "p50": 8.84,
+        "p95": 9.22
+      },
+      "rtf": {
+        "count": 4,
+        "min": 2.8131,
+        "max": 2.9788,
+        "mean": 2.8869,
+        "median": 2.8778,
+        "stdev": 0.078,
+        "p50": 2.8778,
+        "p95": 2.9705
+      },
+      "audio_chunks": {
+        "count": 4,
+        "min": 29.0,
+        "max": 30.0,
+        "mean": 29.25,
+        "median": 29.0,
+        "stdev": 0.5,
+        "p50": 29.0,
+        "p95": 29.85
+      },
+      "total_audio_bytes": {
+        "count": 4,
+        "min": 422400.0,
+        "max": 445440.0,
+        "mean": 429120.0,
+        "median": 424320.0,
+        "stdev": 11029.5603,
+        "p50": 424320.0,
+        "p95": 442560.0
+      }
+    }
+  },
+  "cases": {
+    "zh_formal": {
+      "case": {
+        "id": "zh_formal",
+        "text": "你好，欢迎使用 Qwen3-TTS WebSocket benchmark。这是一段用于测量首包时延与实时因子的中文测试文本。",
+        "language_type": "Chinese",
+        "instructions": "正式，平静，清晰。"
+      },
+      "summary": {
+        "run_count": 2,
+        "ttft_ms": {
+          "count": 2,
+          "min": 315.4383,
+          "max": 326.8413,
+          "mean": 321.1398,
+          "median": 321.1398,
+          "stdev": 8.0631,
+          "p50": 321.1398,
+          "p95": 326.2712
+        },
+        "response_created_ms": {
+          "count": 2,
+          "min": 0.5854,
+          "max": 0.7439,
+          "mean": 0.6646,
+          "median": 0.6646,
+          "stdev": 0.1121,
+          "p50": 0.6646,
+          "p95": 0.736
+        },
+        "total_elapsed_ms": {
+          "count": 2,
+          "min": 24755.3571,
+          "max": 26281.7371,
+          "mean": 25518.5471,
+          "median": 25518.5471,
+          "stdev": 1079.3136,
+          "p50": 25518.5471,
+          "p95": 26205.4181
+        },
+        "audio_duration_s": {
+          "count": 2,
+          "min": 8.8,
+          "max": 9.28,
+          "mean": 9.04,
+          "median": 9.04,
+          "stdev": 0.3394,
+          "p50": 9.04,
+          "p95": 9.256
+        },
+        "rtf": {
+          "count": 2,
+          "min": 2.8131,
+          "max": 2.8321,
+          "mean": 2.8226,
+          "median": 2.8226,
+          "stdev": 0.0134,
+          "p50": 2.8226,
+          "p95": 2.8311
+        },
+        "audio_chunks": {
+          "count": 2,
+          "min": 29.0,
+          "max": 30.0,
+          "mean": 29.5,
+          "median": 29.5,
+          "stdev": 0.7071,
+          "p50": 29.5,
+          "p95": 29.95
+        },
+        "total_audio_bytes": {
+          "count": 2,
+          "min": 422400.0,
+          "max": 445440.0,
+          "mean": 433920.0,
+          "median": 433920.0,
+          "stdev": 16291.7402,
+          "p50": 433920.0,
+          "p95": 444288.0
+        }
+      },
+      "runs": [
+        {
+          "case_id": "zh_formal",
+          "iteration": 1,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 2.055,
+          "session_created_ms": 0.0165,
+          "session_update_ms": 0.5402,
+          "commit_ack_ms": 0.5735,
+          "response_created_ms": 0.5854,
+          "ttft_ms": 326.8413,
+          "audio_done_ms": 24755.3316,
+          "total_elapsed_ms": 24755.3571,
+          "total_audio_bytes": 422400,
+          "audio_duration_s": 8.8,
+          "rtf": 2.813109,
+          "audio_chunks": 29,
+          "usage_characters": 63
+        },
+        {
+          "case_id": "zh_formal",
+          "iteration": 2,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.8897,
+          "session_created_ms": 0.0175,
+          "session_update_ms": 0.5478,
+          "commit_ack_ms": 0.7283,
+          "response_created_ms": 0.7439,
+          "ttft_ms": 315.4383,
+          "audio_done_ms": 26281.7113,
+          "total_elapsed_ms": 26281.7371,
+          "total_audio_bytes": 445440,
+          "audio_duration_s": 9.28,
+          "rtf": 2.832084,
+          "audio_chunks": 30,
+          "usage_characters": 63
+        }
+      ],
+      "failure_count": 0
+    },
+    "ja_formal": {
+      "case": {
+        "id": "ja_formal",
+        "text": "こんにちは。こちらは WebSocket ベンチマーク用の日本語テキストで、TTFT と RTF を測定します。",
+        "language_type": "Japanese",
+        "instructions": "落ち着いて、丁寧に。"
+      },
+      "summary": {
+        "run_count": 2,
+        "ttft_ms": {
+          "count": 2,
+          "min": 325.8756,
+          "max": 334.4672,
+          "mean": 330.1714,
+          "median": 330.1714,
+          "stdev": 6.0752,
+          "p50": 330.1714,
+          "p95": 334.0376
+        },
+        "response_created_ms": {
+          "count": 2,
+          "min": 0.6737,
+          "max": 0.9839,
+          "mean": 0.8288,
+          "median": 0.8288,
+          "stdev": 0.2193,
+          "p50": 0.8288,
+          "p95": 0.9684
+        },
+        "total_elapsed_ms": {
+          "count": 2,
+          "min": 25727.4931,
+          "max": 26451.7691,
+          "mean": 26089.6311,
+          "median": 26089.6311,
+          "stdev": 512.1405,
+          "p50": 26089.6311,
+          "p95": 26415.5553
+        },
+        "audio_duration_s": {
+          "count": 2,
+          "min": 8.8,
+          "max": 8.88,
+          "mean": 8.84,
+          "median": 8.84,
+          "stdev": 0.0566,
+          "p50": 8.84,
+          "p95": 8.876
+        },
+        "rtf": {
+          "count": 2,
+          "min": 2.9236,
+          "max": 2.9788,
+          "mean": 2.9512,
+          "median": 2.9512,
+          "stdev": 0.039,
+          "p50": 2.9512,
+          "p95": 2.976
+        },
+        "audio_chunks": {
+          "count": 2,
+          "min": 29.0,
+          "max": 29.0,
+          "mean": 29.0,
+          "median": 29.0,
+          "stdev": 0.0,
+          "p50": 29.0,
+          "p95": 29.0
+        },
+        "total_audio_bytes": {
+          "count": 2,
+          "min": 422400.0,
+          "max": 426240.0,
+          "mean": 424320.0,
+          "median": 424320.0,
+          "stdev": 2715.29,
+          "p50": 424320.0,
+          "p95": 426048.0
+        }
+      },
+      "runs": [
+        {
+          "case_id": "ja_formal",
+          "iteration": 1,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.8987,
+          "session_created_ms": 0.0168,
+          "session_update_ms": 0.54,
+          "commit_ack_ms": 0.9666,
+          "response_created_ms": 0.9839,
+          "ttft_ms": 325.8756,
+          "audio_done_ms": 25727.4561,
+          "total_elapsed_ms": 25727.4931,
+          "total_audio_bytes": 422400,
+          "audio_duration_s": 8.8,
+          "rtf": 2.923579,
+          "audio_chunks": 29,
+          "usage_characters": 56
+        },
+        {
+          "case_id": "ja_formal",
+          "iteration": 2,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "mode": "commit",
+          "sample_rate": 24000,
+          "connect_ms": 1.8199,
+          "session_created_ms": 0.051,
+          "session_update_ms": 0.4503,
+          "commit_ack_ms": 0.6554,
+          "response_created_ms": 0.6737,
+          "ttft_ms": 334.4672,
+          "audio_done_ms": 26451.7428,
+          "total_elapsed_ms": 26451.7691,
+          "total_audio_bytes": 426240,
+          "audio_duration_s": 8.88,
+          "rtf": 2.978803,
+          "audio_chunks": 29,
+          "usage_characters": 56
+        }
+      ],
+      "failure_count": 0
+    }
+  },
+  "failures": []
+}

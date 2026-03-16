@@ -29,6 +29,74 @@ from .voice_registry import VoiceRegistry
 logger = logging.getLogger(__name__)
 
 
+def _resolve_attr_path(root: Any, path: str) -> Any | None:
+    current = root
+    if not path:
+        return current
+    for part in path.split("."):
+        if current is None or not hasattr(current, part):
+            return None
+        current = getattr(current, part)
+    return current
+
+
+def _extract_config_attn_implementation(target: Any) -> str | None:
+    config = getattr(target, "config", None)
+    value = getattr(config, "_attn_implementation", None)
+    return str(value) if value is not None else None
+
+
+def _collect_attention_backend_snapshot(config: "RealtimeServerConfig", loaded_bundle: LoadedBundle) -> dict[str, Any]:
+    model = loaded_bundle.qwen3tts.model
+    snapshot: dict[str, Any] = {
+        "requested_attn_implementation": config.attn_implementation,
+        "device_map": config.device_map,
+        "torch_dtype": config.torch_dtype,
+        "model_class": type(model).__name__,
+        "model_config_attn_implementation": _extract_config_attn_implementation(model),
+    }
+
+    component_paths = {
+        "speech_tokenizer": "speech_tokenizer",
+        "speech_tokenizer_decoder": "speech_tokenizer.decoder",
+        "speech_tokenizer_decoder_dit": "speech_tokenizer.decoder.dit",
+        "speech_tokenizer_decoder_bigvgan": "speech_tokenizer.decoder.bigvgan",
+        "speech_tokenizer_dit": "speech_tokenizer.dit",
+        "speech_tokenizer_bigvgan": "speech_tokenizer.bigvgan",
+    }
+    for name, path in component_paths.items():
+        target = _resolve_attr_path(model, path)
+        if target is None:
+            continue
+        snapshot[f"{name}_class"] = type(target).__name__
+        attn_impl = _extract_config_attn_implementation(target)
+        if attn_impl is not None:
+            snapshot[f"{name}_attn_implementation"] = attn_impl
+
+    try:
+        import torch
+
+        snapshot["cuda_available"] = bool(torch.cuda.is_available())
+        if hasattr(torch.backends, "cuda"):
+            snapshot["sdpa_runtime_flags"] = {
+                "flash_sdp_enabled": bool(torch.backends.cuda.flash_sdp_enabled()),
+                "mem_efficient_sdp_enabled": bool(torch.backends.cuda.mem_efficient_sdp_enabled()),
+                "math_sdp_enabled": bool(torch.backends.cuda.math_sdp_enabled()),
+            }
+    except Exception as exc:  # pragma: no cover - diagnostic only
+        snapshot["sdpa_runtime_flags_error"] = str(exc)
+
+    return snapshot
+
+
+def _log_attention_backend_snapshot(config: "RealtimeServerConfig", loaded_bundle: LoadedBundle) -> None:
+    snapshot = _collect_attention_backend_snapshot(config, loaded_bundle)
+    logger.warning(
+        "attention_backend_snapshot=%s",
+        json.dumps(snapshot, ensure_ascii=False, sort_keys=True),
+    )
+
+
 @dataclass
 class RealtimeServerDependencies:
     loaded_bundle: LoadedBundle
@@ -98,6 +166,7 @@ class RealtimeServerConfig:
     attn_implementation: str = "sdpa"
     local_files_only: bool = False
     trace_timing: bool = False
+    trace_attention_backend: bool = False
 
 
 class BundleSpeechService:
@@ -288,6 +357,8 @@ def build_dependencies(
         attn_implementation=config.attn_implementation,
         local_files_only=config.local_files_only,
     )
+    if config.trace_attention_backend:
+        _log_attention_backend_snapshot(config, loaded_bundle)
     voice_registry = build_voice_registry(config, loaded_bundle)
     return RealtimeServerDependencies(
         loaded_bundle=loaded_bundle,
@@ -505,6 +576,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--attn_implementation", default="sdpa")
     parser.add_argument("--local_files_only", action="store_true")
     parser.add_argument("--trace_timing", action="store_true")
+    parser.add_argument("--trace_attention_backend", action="store_true")
     return parser
 
 
@@ -532,6 +604,7 @@ def main() -> None:
         attn_implementation=args.attn_implementation,
         local_files_only=args.local_files_only,
         trace_timing=args.trace_timing,
+        trace_attention_backend=args.trace_attention_backend,
     )
     logging.basicConfig(level=logging.INFO if config.trace_timing else logging.WARNING)
     app = create_app(config=config)

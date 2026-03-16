@@ -1,0 +1,30 @@
+<frozen runpy>:128: RuntimeWarning: 'streaming_lora_service.app.server' found in sys.modules after import of package 'streaming_lora_service.app', but prior to execution of 'streaming_lora_service.app.server'; this may result in unpredictable behaviour
+WARNING:__main__:attention_backend_snapshot={"cuda_available": true, "device_map": "cuda:0", "model_class": "Qwen3TTSForConditionalGeneration", "model_config_attn_implementation": "sdpa", "requested_attn_implementation": "sdpa", "sdpa_runtime_flags": {"flash_sdp_enabled": true, "math_sdp_enabled": true, "mem_efficient_sdp_enabled": true}, "speech_tokenizer_attn_implementation": "sdpa", "speech_tokenizer_class": "Qwen3TTSTokenizer", "torch_dtype": "bfloat16"}
+INFO:     Started server process [7491]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:9011 (Press CTRL+C to quit)
+INFO:     127.0.0.1:46924 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46924 - "GET /v1/voices HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46940 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:48348 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:45276 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:44958 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:46944 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:44776 - "WebSocket /api-ws/v1/realtime" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [7491]
