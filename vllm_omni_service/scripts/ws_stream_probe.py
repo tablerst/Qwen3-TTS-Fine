@@ -12,6 +12,8 @@ from typing import Any
 
 import websockets
 
+PCM24K_MONO_S16_BYTES_PER_SECOND = 24_000 * 2
+
 
 async def stream_probe(args: argparse.Namespace) -> dict[str, Any]:
     output_dir = Path(args.output_dir).expanduser().resolve()
@@ -33,6 +35,8 @@ async def stream_probe(args: argparse.Namespace) -> dict[str, Any]:
         session_config["ref_text"] = args.ref_text
     if args.x_vector_only_mode:
         session_config["x_vector_only_mode"] = True
+    if args.initial_codec_chunk_frames is not None:
+        session_config["initial_codec_chunk_frames"] = args.initial_codec_chunk_frames
     if args.stream_audio:
         session_config["stream_audio"] = True
 
@@ -90,7 +94,7 @@ async def stream_probe(args: argparse.Namespace) -> dict[str, Any]:
                 raise RuntimeError(payload.get("message", "Unknown websocket error"))
 
     elapsed_ms = (time.perf_counter() - started_at) * 1000.0
-    return {
+    metrics = {
         "url": args.url,
         "stream_audio": args.stream_audio,
         "response_format": args.response_format,
@@ -101,6 +105,11 @@ async def stream_probe(args: argparse.Namespace) -> dict[str, Any]:
         "first_audio_ms": round(first_audio_ms, 2) if first_audio_ms is not None else None,
         "elapsed_ms": round(elapsed_ms, 2),
     }
+    if args.response_format == "pcm" and total_audio_bytes > 0:
+        audio_duration_s = total_audio_bytes / PCM24K_MONO_S16_BYTES_PER_SECOND
+        metrics["audio_duration_s"] = round(audio_duration_s, 4)
+        metrics["rtf"] = round(elapsed_ms / 1000.0 / audio_duration_s, 4)
+    return metrics
 
 
 def parse_args() -> argparse.Namespace:
@@ -115,6 +124,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-audio", default=None)
     parser.add_argument("--ref-text", default=None)
     parser.add_argument("--x-vector-only-mode", action="store_true", default=False)
+    parser.add_argument(
+        "--initial-codec-chunk-frames",
+        type=int,
+        default=None,
+        help="Optional per-session override for initial_codec_chunk_frames to reduce TTFA.",
+    )
     parser.add_argument("--response-format", default="pcm", choices=["wav", "pcm", "flac", "mp3", "aac", "opus"])
     parser.add_argument("--stream-audio", action="store_true", help="Ask for chunked audio within each sentence.")
     parser.add_argument("--simulate-stt", action="store_true")

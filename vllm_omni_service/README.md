@@ -44,6 +44,23 @@
 - `WS /v1/audio/speech/stream` 在 **句级返回** 模式下可用；
 - `WS stream_audio=true` 当前失败，报错指向上游服务实现缺少 `_generate_pcm_chunks`，应视为上游缺口/bug，而不是本仓库脚本问题。
 
+### 2026-03-17 版本边界补充
+
+- 当前仓库本机验证到的 `WS stream_audio=true` 失败是**稳定复现**的；
+- 上游 PR `vllm-project/vllm-omni#1719` 已合并，补齐了 `Qwen3-TTS` WebSocket 的**句内 PCM chunk 流式输出**；
+- 但它的支持边界要描述准确：
+  - 仍然是**按句子切分**；
+  - 每个句子内部会发送：
+    - `audio.start`
+    - 一个或多个二进制 PCM chunk
+    - `audio.done`
+  - 不是“跨句连续、无限细粒度”的任意 chunk 流式。
+- 因此，这个目录后续应按**版本闸门**来理解 WebSocket 能力：
+  - **当前本地已验证版本 / 环境**：`stream_audio=true` 仍不可用；
+  - **包含 PR #1719 的上游版本**：理论上应支持“句内多 PCM chunk”；
+  - 真正继续推进本目录前，必须先确认你本地安装的 `vllm-omni` 是否已经包含该 PR。
+- 另外，若后续要验证 `Base` / `ICL` 的 voice cloning 路径，也应留意上游 PR `#1731`：它修复了 async-chunk 多阶段流水线里 `ref_code` 上下文未正确传到 `Code2Wav` 的问题；旧版本可能在首段音频前部出现噪声或不稳定。
+
 ## 目录结构
 
 ```text
@@ -125,6 +142,28 @@ vllm_omni_service/
 - HTTP：优先验证 `198.18.0.1:8091`；
 - WebSocket：先验证默认句级模式，再单独验证 `stream_audio=true`；
 - Base 任务尽量优先用**本地参考音频**，由探针脚本自动编码为 base64 data URL，避免远程 `ref_audio` 抓取出现 `403`。
+
+### 6. 先做串行基线，再谈吞吐
+
+结合当前本机使用模式，`vllm_omni_service` 首轮优化应明确采用**串行 / 低并发优先**：
+
+- 典型场景：单请求串行；
+- 可接受的额外场景：调用端把句子切开后做 `2~3` 路轻并发；
+- 暂不以高并发吞吐为第一目标。
+
+因此基准顺序建议固定为：
+
+1. HTTP PCM streaming 单请求基线；
+2. WS `stream_audio=false` 句级基线；
+3. 仅在本地版本确认包含 PR `#1719` 后，再测 WS `stream_audio=true`；
+4. 仅在本地版本确认包含 PR `#1731` 后，再把 `Base/ICL` 的声音质量和首音表现纳入正式结论。
+
+配套建议：
+
+- 优先关注 `TTFA/TTFT`、`RTF`、总耗时；
+- 每组实验先做 warmup，再做 `3~5` 次串行重复；
+- 优先对比 `SDPA` 与 `FA2`、`codec_chunk_frames`、`codec_left_context_frames`；
+- 高并发、复杂路由、多 LoRA 路由，不放到这个目录首轮目标里。
 
 ## 推荐首版边界
 
@@ -224,4 +263,4 @@ vllm_omni_service/
 - WebSocket Base 请求（chunk 模式，`stream_audio=true`）
   - 失败
   - 服务端异常：`'OmniOpenAIServingSpeech' object has no attribute '_generate_pcm_chunks'`
-  - 初步判断：上游 `vllm-omni` 当前版本的 WS chunk 音频流式实现缺口
+  - 初步判断：当前本机已验证版本缺少 WS chunk 音频流式实现；若升级到包含 `vllm-project/vllm-omni#1719` 的版本，应重新验证“句内 chunk”能力，而不是默认沿用这个失败结论

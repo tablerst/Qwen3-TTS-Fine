@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 RESPONSE_FORMATS = {"wav", "mp3", "flac", "pcm", "aac", "opus"}
+PCM24K_MONO_S16_BYTES_PER_SECOND = 24_000 * 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,6 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-audio", default=None, help="Reference audio URL or base64 data URL for Base task.")
     parser.add_argument("--ref-text", default=None, help="Reference text for Base task.")
     parser.add_argument("--x-vector-only-mode", action="store_true", help="Use speaker embedding only mode for Base task.")
+    parser.add_argument(
+        "--initial-codec-chunk-frames",
+        type=int,
+        default=None,
+        help="Optional per-request override for initial_codec_chunk_frames to reduce TTFA.",
+    )
     parser.add_argument("--response-format", default="pcm", choices=sorted(RESPONSE_FORMATS))
     parser.add_argument("--stream", action="store_true", help="Request raw HTTP streaming from the API.")
     parser.add_argument(
@@ -58,6 +65,8 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
         payload["ref_text"] = args.ref_text
     if args.x_vector_only_mode:
         payload["x_vector_only_mode"] = True
+    if args.initial_codec_chunk_frames is not None:
+        payload["initial_codec_chunk_frames"] = args.initial_codec_chunk_frames
     if args.stream:
         payload["stream"] = True
     return payload
@@ -81,8 +90,7 @@ def default_output_path(response_format: str) -> Path:
     return Path(__file__).resolve().parents[2] / "outputs" / "vllm_omni" / f"http_probe.{response_format}"
 
 
-def main() -> None:
-    args = parse_args()
+def probe(args: argparse.Namespace) -> dict[str, Any]:
     if args.stream and args.response_format != "pcm":
         raise ValueError("HTTP streaming probe should use --response-format pcm to match the official API contract.")
 
@@ -121,6 +129,16 @@ def main() -> None:
         "first_chunk_ms": round(first_chunk_ms, 2) if first_chunk_ms is not None else None,
         "elapsed_ms": round(elapsed_ms, 2),
     }
+    if args.response_format == "pcm" and total_bytes > 0:
+        audio_duration_s = total_bytes / PCM24K_MONO_S16_BYTES_PER_SECOND
+        metrics["audio_duration_s"] = round(audio_duration_s, 4)
+        metrics["rtf"] = round(elapsed_ms / 1000.0 / audio_duration_s, 4)
+    return metrics
+
+
+def main() -> None:
+    args = parse_args()
+    metrics = probe(args)
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
 
 

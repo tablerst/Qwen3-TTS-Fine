@@ -53,6 +53,52 @@ PoC 阶段只要求回答四个问题：
 - 固定 response_format=pcm；
 - 固定单卡环境。
 
+### 2026-03-17 补充
+
+结合当前使用模式，这个目录的 benchmark 需要明确偏向：
+
+- **串行单请求性能优先**；
+- 低并发只做回归检查，不做主要优化目标；
+- 对 `vllm-omni` 的 WS 能力使用**版本感知**的测试矩阵。
+
+推荐基线顺序：
+
+1. HTTP `stream=true` + `response_format=pcm`
+2. WS `stream_audio=false`
+3. WS `stream_audio=true`（仅当本地版本确认包含上游 PR `#1719`）
+4. `Base/ICL`（仅当本地版本确认包含上游 PR `#1731`）
+
+推荐每组执行：
+
+- warmup `1` 次；
+- 正式串行重复 `3~5` 次；
+- 记录 `first_chunk_ms / first_audio_ms`、`elapsed_ms`、`audio_duration_s`、`rtf`；
+- 单独标记“首个真实请求”和“warmup 后请求”的差异。
+
+若后续要做轻并发检查，建议仅增加：
+
+- `2` 路并发
+- `3` 路并发
+
+目的不是追求极限吞吐，而是确认串行调优没有把低并发体验搞崩。
+
+## 配套脚本
+
+建议优先使用：
+
+- `scripts/http_stream_probe.py`
+- `scripts/ws_stream_probe.py`
+- `scripts/serial_benchmark.py`
+
+其中 `serial_benchmark.py` 会顺序重复调用 HTTP / WS 探针，汇总：
+
+- 首包 / 首音频分位数
+- 总耗时分位数
+- `audio_duration_s`
+- `rtf`
+
+这样更符合本目录当前真正关心的“单请求可感知延迟”。
+
 不要在 PoC 首轮就追求：
 
 - 高并发；

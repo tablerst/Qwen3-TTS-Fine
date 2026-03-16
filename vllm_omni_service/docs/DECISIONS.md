@@ -11,6 +11,23 @@
 
 ## 首版已定决策
 
+### 0. 串行延迟优先于并发吞吐
+
+当前本机的真实使用模式以：
+
+- 单请求串行为主；
+- 调用端将切句后的请求做 `2~3` 路轻并发为辅；
+- 基本不存在高并发压测式流量。
+
+因此本目录首轮优化优先级明确为：
+
+1. 单请求 `TTFA / TTFT`；
+2. 单请求 `RTF`；
+3. warmup 后第二次及后续请求的稳定性；
+4. 低并发（`2~3`）是否出现明显回退。
+
+这意味着首版 benchmark、脚本和文档都应默认围绕**串行基线**组织，而不是先追求大并发吞吐数字。
+
 ### 1. 单实例固定 1 个 LoRA
 
 首版不做：
@@ -68,6 +85,27 @@
 - streaming 不支持 `speed`
 - 依赖 stage config 中 `async_chunk: true`
 
+### WebSocket streaming 的版本边界
+
+- 你当前仓库先前验证到的 `WS stream_audio=true` 缺少 `_generate_pcm_chunks`，且该失败在本机上是**稳定复现**的；
+- 上游 PR `vllm-project/vllm-omni#1719` 已合并，用于补齐 `Qwen3-TTS` 的 WebSocket streaming audio output；
+- 该 PR 的能力边界是：
+	- WebSocket 仍然按**句子**组织输出；
+	- 每个句子在 `audio.start` 与 `audio.done` 之间发送多个 PCM 二进制 chunk；
+	- 不是跨句连续的任意粒度音频流。
+
+因此，本目录后续对 WS 能力的陈述必须写成：
+
+- **当前本地已验证版本**：`stream_audio=true` 不可用；
+- **包含 PR #1719 的上游版本**：应支持“句内 chunk 的 PCM 流式输出”；
+- 是否真正可用，以本地安装版本和回归验证结果为准。
+
+### Base / ICL 路径的版本门槛
+
+- 上游 PR `vllm-project/vllm-omni#1731` 修复了 `Base ICL` 在 async-chunk 多阶段流水线中的 `ref_code` 解码上下文缺失问题；
+- 在较旧版本上，即使 HTTP / WS 能返回音频，也可能在首段出现噪声、前缀不稳或质量异常；
+- 因此若要把 `Base` 的 voice cloning 结果纳入正式对比，应优先确认本地版本是否已经包含 `#1731`。
+
 ### stage config 关键信息
 
 上游 `qwen3_tts.yaml` 中已经出现并值得保留的关键信息包括：
@@ -119,6 +157,11 @@
 - 编写新的 FastAPI server；
 - 为 `streaming_lora_service` 提供双栈兼容；
 - 承诺生产级吞吐或并发指标。
+
+补充说明：
+
+- 首版不会围绕高并发做系统级优化；
+- `2~3` 路轻并发只用于检查串行优化是否产生明显副作用，不作为主要 KPI。
 
 ## 最近一步的现实结论
 
