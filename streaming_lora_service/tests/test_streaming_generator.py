@@ -216,6 +216,10 @@ class StreamingGeneratorTests(unittest.TestCase):
         self.assertEqual(generator.metrics.emitted_chunks, 2)
         self.assertEqual(generator.metrics.first_emitted_step, 2)
         self.assertEqual(generator.metrics.finish_reason, "eos")
+        self.assertIsNotNone(generator.metrics.first_forward_ms)
+        assert generator.metrics.first_forward_ms is not None
+        self.assertGreater(generator.metrics.first_forward_ms, 0.0)
+        self.assertGreater(generator.metrics.total_forward_ms, 0.0)
         self.assertTrue(generator.state.finished)
 
     def test_step_returns_none_until_chunk_threshold_then_flushes_on_finish(self) -> None:
@@ -252,6 +256,7 @@ class StreamingGeneratorTests(unittest.TestCase):
             runtime_session=session,
             chunk_steps=2,
             left_context_steps=1,
+            runtime_session_sync_mode="step",
         )
 
         self.assertEqual(session.state.active_generation_text, "你好，恢复状态。")
@@ -274,6 +279,7 @@ class StreamingGeneratorTests(unittest.TestCase):
             runtime_session=session,
             chunk_steps=2,
             left_context_steps=1,
+            runtime_session_sync_mode="step",
         )
 
         chunks = list(resumed_generator.iter_audio_chunks())
@@ -286,6 +292,84 @@ class StreamingGeneratorTests(unittest.TestCase):
         self.assertEqual(generation_snapshot["generated_steps"], 3)
         self.assertEqual(session.state.last_generation_metrics["finish_reason"], "eos")
         self.assertEqual(qwen3tts.model.talker._cursor, 3)
+
+    def test_chunk_sync_mode_defers_runtime_session_updates_until_emit_or_finish(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        session = self.make_session()
+
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，分块同步。",
+            speaker="inference_speaker",
+            language="Chinese",
+            runtime_session=session,
+            chunk_steps=2,
+            left_context_steps=1,
+            runtime_session_sync_mode="chunk",
+        )
+
+        self.assertEqual(session.state.generated_codes, [])
+        self.assertEqual(session.state.last_generation_metrics["runtime_session_sync_mode"], "chunk")
+
+        first = generator.step()
+
+        self.assertIsNone(first)
+        self.assertEqual(session.state.generated_codes, [])
+        self.assertEqual(session.state.past_key_values, {"cursor": 0})
+
+        second = generator.step()
+
+        self.assertIsNotNone(second)
+        self.assertEqual(len(session.state.generated_codes), 2)
+        self.assertEqual(session.state.sampled_tokens, [11, 12])
+        self.assertEqual(session.state.past_key_values, {"cursor": 2})
+
+    def test_attention_mask_reuses_preallocated_buffer_across_steps(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，mask 复用。",
+            speaker="inference_speaker",
+            language="Chinese",
+            chunk_steps=2,
+            left_context_steps=1,
+            max_new_tokens=8,
+        )
+
+        initial_length = generator.state.attention_length
+        buffer = generator.state.attention_mask_buffer
+
+        self.assertGreaterEqual(buffer.shape[1], initial_length + 8)
+        self.assertEqual(generator.state.attention_mask.data_ptr(), buffer.data_ptr())
+
+        generator.step()
+
+        self.assertEqual(generator.state.attention_length, initial_length + 1)
+        self.assertEqual(generator.state.attention_mask.data_ptr(), buffer.data_ptr())
+
+    def test_generated_code_buffer_avoids_decoder_side_duplicate_codec_buffering(self) -> None:
+        qwen3tts = FakeQwen3TTS()
+        generator = StreamingCustomVoiceGenerator(
+            qwen3tts,
+            text="你好，codec buffer。",
+            speaker="inference_speaker",
+            language="Chinese",
+            chunk_steps=2,
+            left_context_steps=1,
+            max_new_tokens=8,
+        )
+
+        generator.step()
+        generator.step()
+
+        self.assertEqual(generator.state.generated_code_count, 2)
+        self.assertIsNotNone(generator.state.generated_code_buffer)
+        self.assertEqual(generator.decoder.buffered_step_count, 0)
+        assert generator.state.generated_code_buffer is not None
+        self.assertEqual(
+            generator.state.generated_codes[0].untyped_storage().data_ptr(),
+            generator.state.generated_code_buffer.untyped_storage().data_ptr(),
+        )
 
     def test_iter_audio_chunks_marks_length_finish_reason_when_hitting_max_new_tokens(self) -> None:
         qwen3tts = FakeQwen3TTS()

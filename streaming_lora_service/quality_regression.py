@@ -42,6 +42,7 @@ class PathMetrics:
     finish_reason: str | None = None
     codec_steps: int | None = None
     output_wav_path: str | None = None
+    runtime_metrics: dict[str, Any] | None = None
 
 
 @dataclass
@@ -394,6 +395,7 @@ def collect_streaming_sampler_full_decode(service: BundleSpeechService, case: Va
             first_emitted_step=generator.metrics.first_emitted_step,
             finish_reason=generator.metrics.finish_reason,
             codec_steps=len(generated_codes),
+            runtime_metrics=dict(session.state.last_generation_metrics),
         ),
         audio_bytes=audio_bytes,
         codec_tokens=codec_tokens,
@@ -436,6 +438,7 @@ def collect_http_streaming_runtime(service: BundleSpeechService, case: Validatio
             emitted_chunks=metrics.get("emitted_chunks"),
             first_emitted_step=metrics.get("first_emitted_step"),
             finish_reason=metrics.get("finish_reason"),
+            runtime_metrics=metrics,
         ),
         audio_bytes=audio_bytes,
         codec_tokens=codec_tokens,
@@ -499,6 +502,7 @@ def collect_websocket_realtime(service: BundleSpeechService, case: ValidationCas
             emitted_chunks=metrics.get("emitted_chunks"),
             first_emitted_step=metrics.get("first_emitted_step"),
             finish_reason=metrics.get("finish_reason"),
+            runtime_metrics=metrics,
         ),
         audio_bytes=audio_bytes,
         codec_tokens=codec_tokens,

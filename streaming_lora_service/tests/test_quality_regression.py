@@ -134,6 +134,11 @@ class QualityRegressionTests(unittest.TestCase):
         self.assertEqual(collected.metrics.codec_steps, 3)
         self.assertEqual(collected.metrics.finish_reason, "eos")
         self.assertEqual(collected.metrics.delta_chunks, 2)
+        self.assertIsNotNone(collected.metrics.runtime_metrics)
+        assert collected.metrics.runtime_metrics is not None
+        self.assertEqual(collected.metrics.runtime_metrics["generated_steps"], 3)
+        self.assertIn("total_forward_ms", collected.metrics.runtime_metrics)
+        self.assertIn("avg_forward_ms", collected.metrics.runtime_metrics)
         self.assertEqual(collected.codec_tokens, ((11, 31, 51), (12, 32, 52), (13, 33, 53)))
         self.assertEqual(collected.chunk_boundaries_samples, (8,))
 

@@ -243,6 +243,12 @@ session.finish
 - `decoded_until_step`
 - `finished`
 
+补充建议：
+
+- `RuntimeSession` 应允许把“状态绑定频率”作为独立策略控制，而不是默认死绑到每个 generation step；
+- 对当前服务实现，更推荐默认使用 **chunk 级同步**，仅在调试或验证跨步恢复时切回 `step`；
+- 这样可以把 session 语义保留在公开协议之外，同时减少流式热路径里的 Python 复制税。
+
 ### 4.2 为什么同时需要公开别名与内部 speaker 信息
 
 因为：
@@ -329,6 +335,22 @@ $$
 - commit 次数
 - `server_commit` / `commit` 模式占比
 - eos 结束 / 手动 finish 结束
+- `state_sync_calls`
+- `total_state_sync_ms`
+
+## 8.1 当前已落地的实现层提速策略
+
+截至 2026-03-17，`streaming_lora_service` 已落地第一轮“非 attention 热路径”优化：
+
+1. `RuntimeSession` 状态绑定默认从 step 级降到 chunk 级；
+2. `attention_mask` 改为预分配 buffer + 按长度切片，避免每 step `torch.cat(...)` 增长式复制。
+
+这两项都属于：
+
+- 不改公开协议；
+- 不改模型权重；
+- 不改采样逻辑；
+- 以减少实现层 CPU / 内存税为目标。
 
 ## 9. 未来扩展点
 

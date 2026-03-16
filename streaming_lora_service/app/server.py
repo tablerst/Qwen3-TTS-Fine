@@ -110,6 +110,7 @@ class RealtimeServerDependencies:
     crossfade_samples: int = 0
     samples_per_step: int = 1920
     trace_timing: bool = False
+    runtime_session_sync_mode: str = "chunk"
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,7 @@ class RealtimeServerConfig:
     local_files_only: bool = False
     trace_timing: bool = False
     trace_attention_backend: bool = False
+    runtime_session_sync_mode: str = "chunk"
 
 
 class BundleSpeechService:
@@ -267,6 +269,7 @@ class BundleSpeechService:
             left_context_steps=self.deps.left_context_steps,
             first_chunk_steps=self.deps.first_chunk_steps,
             crossfade_samples=self.deps.crossfade_samples,
+            runtime_session_sync_mode=self.deps.runtime_session_sync_mode,
         )
         first_chunk_at: float | None = None
         total_audio_bytes = 0
@@ -281,7 +284,7 @@ class BundleSpeechService:
                 total_elapsed_ms = (time.perf_counter() - stream_started_at) * 1000.0
                 runtime_metrics = dict(session.state.last_generation_metrics)
                 logger.info(
-                    "stream_timing session=%s voice=%s text_chars=%s init_ms=%.2f first_chunk_ms=%s total_ms=%.2f audio_bytes=%s metrics=%s",
+                    "stream_timing session=%s voice=%s text_chars=%s init_ms=%.2f first_chunk_ms=%s total_ms=%.2f audio_bytes=%s generated_steps=%s emitted_chunks=%s avg_forward_ms=%s avg_decode_ms=%s avg_state_sync_ms=%s metrics=%s",
                     getattr(session, "session_id", "unknown"),
                     session.options.voice,
                     len(text),
@@ -289,6 +292,11 @@ class BundleSpeechService:
                     round((first_chunk_at - stream_started_at) * 1000.0, 2) if first_chunk_at is not None else None,
                     total_elapsed_ms,
                     total_audio_bytes,
+                    runtime_metrics.get("generated_steps"),
+                    runtime_metrics.get("emitted_chunks"),
+                    runtime_metrics.get("avg_forward_ms"),
+                    runtime_metrics.get("avg_decode_ms"),
+                    runtime_metrics.get("avg_state_sync_ms"),
                     runtime_metrics,
                 )
 
@@ -372,6 +380,7 @@ def build_dependencies(
         crossfade_samples=config.crossfade_samples,
         samples_per_step=config.samples_per_step,
         trace_timing=config.trace_timing,
+        runtime_session_sync_mode=config.runtime_session_sync_mode,
     )
 
 
@@ -577,6 +586,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--local_files_only", action="store_true")
     parser.add_argument("--trace_timing", action="store_true")
     parser.add_argument("--trace_attention_backend", action="store_true")
+    parser.add_argument(
+        "--runtime_session_sync_mode",
+        choices=("step", "chunk", "final"),
+        default="chunk",
+        help="How often to bind RuntimeSession generation state during streaming.",
+    )
     return parser
 
 
@@ -605,6 +620,7 @@ def main() -> None:
         local_files_only=args.local_files_only,
         trace_timing=args.trace_timing,
         trace_attention_backend=args.trace_attention_backend,
+        runtime_session_sync_mode=args.runtime_session_sync_mode,
     )
     logging.basicConfig(level=logging.INFO if config.trace_timing else logging.WARNING)
     app = create_app(config=config)

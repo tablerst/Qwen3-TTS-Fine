@@ -130,6 +130,9 @@
 - [x] 可运行 HTTP TTS 服务 MVP 已完成
 - [x] `response.audio.delta` 分块下发 MVP 已完成
 - [x] `custom_voice` 初版 step-level 流式内核已落地（prompt builder + stateful step generator + iterator 下发）
+- [x] runtime session 同步策略已支持 `step / chunk / final`，默认切到 `chunk`
+- [x] generation `attention_mask` 已改为预分配 buffer + 切片视图，避免每 step `torch.cat(...)`
+- [x] generator decode 路径已去掉重复 codec ring buffer，改为直接基于 `generated_code_buffer` 按 step 范围解码
 - [ ] 人工试听结论与更完整的跨 append/commit continuation 仍待完成
 
 ## 首批默认配置建议

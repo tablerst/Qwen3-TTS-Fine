@@ -202,6 +202,37 @@ V1 暂不追求：
 - 默认 LoRA bundle 的真实端到端 TTFB / chunk 粒度指标已经记录，但**人工试听结论**仍需最终确认。
 - 当前 runtime session 的状态复用仍偏向**同一段文本生成中的恢复**；真正跨 `append/commit` 的 continuation 仍未宣称完成。
 
+## 2026-03-17 性能推进：非 attention 热路径第一轮落地
+
+在已经确认当前短 token 流式场景下 `sdpa` 优于 `flash_attention_2` 后，服务侧开始转向“**不碰模型质量、优先砍实现层白税**”的路线。
+
+本轮已先落两项：
+
+- `StreamingCustomVoiceGenerator` 新增 `runtime_session_sync_mode`，默认从旧的“每 step 绑定状态”收敛到 **`chunk` 粒度同步**；
+- `_run_single_step()` 不再每 step 用 `torch.cat(...)` 增长 `attention_mask`，而是改为**预分配 buffer + 按当前长度切片**。
+
+随后又继续推进了一步 decode 热路径优化：
+
+- 生成器不再把 codec step 同时写入 `generated_codes` 和 decoder 内部 ring buffer；
+- 增量解码改为直接基于 generator 侧预分配的 `generated_code_buffer` 按 step 范围切片 decode。
+
+这两项的目标都不是改变采样或音频结果，而是减少：
+
+- Python 列表 / 字典复制；
+- `attention_mask` 线性增长带来的张量重分配；
+- codec step 的重复缓存与 decode window 打包；
+- 短 token 场景下每 step 的额外实现层开销。
+
+说明：
+
+- 默认模式现在更偏向“同一请求内稳定跑完”；
+- 如果你需要保留旧的逐 step 调试 / 恢复行为，可显式传 `runtime_session_sync_mode="step"`，或在服务启动时加 `--runtime_session_sync_mode step`；
+- 若只希望在结束时同步 session，可使用 `final`。
+
+对应执行方案文档见：
+
+- `docs/PERFORMANCE_EXECUTION_PLAN_20260317.md`
+
 ## 2026-03-12 修复更新：step-level 流式过生成
 
 本轮已修复一个会直接导致流式路径严重过生成的根因：
@@ -237,6 +268,18 @@ python -m streaming_lora_service.app.server --bundle_dir <path_to_bundle>
 python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_candidate8_v2 --voice_registry_file streaming_lora_service/configs/voice_registry.candidate8_v2.json --host 0.0.0.0 --port 9010 --local_files_only
 ```
 
+如果你想切换 runtime session 同步策略，可额外加：
+
+```text
+--runtime_session_sync_mode chunk
+```
+
+支持值：
+
+- `step`：每个 generation step 都同步（兼容旧行为，调试友好，性能最保守）
+- `chunk`：仅在产出音频 chunk 时同步，外加初始化/结束强制同步（当前默认）
+- `final`：只在初始化和结束时同步
+
 说明：
 
 - 当前仓库已经验证 `python -m streaming_lora_service.app.server ...` 可以直接启动服务；
@@ -257,9 +300,9 @@ python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8
 
 下一阶段建议优先补下面 3 件事：
 
-1. 把“已绑定的会话状态”继续推进到真正跨 append/commit 的增量 continuation 复用
+1. 继续优化 decode window / codec ring buffer 的打包路径，减少 `tuple/list/stack` 往返
 2. 增加默认 bundle 的人工试听结论与主观质量记录
-3. 继续补真实 bundle 的端到端回归样本与指标基线
+3. 在 shape 更稳定后，再评估 `torch.compile` 是否值得作为实验开关引入
 
 如果当前目标是“对外服务先稳定跑起来”，优先建议围绕 `candidate8 v2` 继续扩展样本和试听结论，而不是回到旧的单语 refcand8 版本重新做服务口径。
 
