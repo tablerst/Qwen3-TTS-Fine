@@ -213,6 +213,22 @@ class StreamingCustomVoiceGenerator:
             grown_capacity = max(min_capacity, buffer.shape[0] * 2)
         self.state.generated_code_buffer = self._build_generated_code_buffer(source, min_capacity=grown_capacity)
 
+    def _is_compile_enabled(self) -> bool:
+        return bool(getattr(self.qwen3tts.model, "_talker_compile_enabled", False))
+
+    def _mark_compiler_step_begin(self) -> None:
+        if not self._is_compile_enabled():
+            return
+        compiler = getattr(torch, "compiler", None)
+        if compiler is None or not hasattr(compiler, "cudagraph_mark_step_begin"):
+            return
+        compiler.cudagraph_mark_step_begin()
+
+    def _clone_reusable_tensor(self, tensor: torch.Tensor | None) -> torch.Tensor | None:
+        if tensor is None or not self._is_compile_enabled():
+            return tensor
+        return tensor.clone()
+
     def _append_generated_code(self, codec_ids: torch.Tensor) -> torch.Tensor:
         if codec_ids.ndim != 1:
             raise StreamingGenerationError(f"Expected codec_ids with shape (width,), got {tuple(codec_ids.shape)}")
@@ -276,11 +292,11 @@ class StreamingCustomVoiceGenerator:
         self.state.attention_mask = getattr(step_outputs, "streaming_attention_mask")
         self.state.attention_length = int(getattr(step_outputs, "streaming_attention_length", self.state.attention_mask.shape[1]))
         self.state.past_key_values = step_outputs.past_key_values
-        self.state.past_hidden = step_outputs.past_hidden
+        self.state.past_hidden = self._clone_reusable_tensor(step_outputs.past_hidden)
         self.state.generation_step = int(step_outputs.generation_step)
         self.state.next_logits = self._prepare_next_token_logits(step_outputs.logits)
-        self.state.trailing_text_hidden = step_outputs.trailing_text_hidden
-        self.state.tts_pad_embed = step_outputs.tts_pad_embed
+        self.state.trailing_text_hidden = self._clone_reusable_tensor(step_outputs.trailing_text_hidden)
+        self.state.tts_pad_embed = self._clone_reusable_tensor(step_outputs.tts_pad_embed)
 
         if self.metrics.generated_steps >= self.prompt.sampling.max_new_tokens:
             self.metrics.finish_reason = "length"
@@ -319,6 +335,7 @@ class StreamingCustomVoiceGenerator:
         talker = self.qwen3tts.model.talker
         if hasattr(talker, "rope_deltas"):
             talker.rope_deltas = None
+        self._mark_compiler_step_begin()
         with torch.inference_mode():
             outputs = talker(
                 inputs_embeds=self.prompt.talker_input_embeds,
@@ -339,10 +356,10 @@ class StreamingCustomVoiceGenerator:
             attention_mask_buffer=attention_mask_buffer,
             attention_length=int(self.prompt.attention_mask.shape[1]),
             past_key_values=outputs.past_key_values,
-            past_hidden=outputs.past_hidden,
+            past_hidden=self._clone_reusable_tensor(outputs.past_hidden),
             generation_step=int(outputs.generation_step),
-            trailing_text_hidden=outputs.trailing_text_hidden,
-            tts_pad_embed=outputs.tts_pad_embed,
+            trailing_text_hidden=self._clone_reusable_tensor(outputs.trailing_text_hidden),
+            tts_pad_embed=self._clone_reusable_tensor(outputs.tts_pad_embed),
             next_logits=self._prepare_next_token_logits(outputs.logits),
             generated_code_buffer=None,
             generated_code_count=0,
@@ -387,6 +404,7 @@ class StreamingCustomVoiceGenerator:
             next_length,
             device=next_token.device,
         )
+        self._mark_compiler_step_begin()
         with torch.inference_mode():
             outputs = self.qwen3tts.model.talker(
                 input_ids=next_token,

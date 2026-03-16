@@ -50,10 +50,16 @@ def _collect_attention_backend_snapshot(config: "RealtimeServerConfig", loaded_b
     model = loaded_bundle.qwen3tts.model
     snapshot: dict[str, Any] = {
         "requested_attn_implementation": config.attn_implementation,
+        "compile_talker": config.compile_talker,
+        "compile_mode": config.compile_mode if config.compile_talker else None,
+        "compile_dynamic": config.compile_dynamic if config.compile_talker else None,
         "device_map": config.device_map,
         "torch_dtype": config.torch_dtype,
         "model_class": type(model).__name__,
         "model_config_attn_implementation": _extract_config_attn_implementation(model),
+        "model_talker_compile_enabled": bool(getattr(model, "_talker_compile_enabled", False)),
+        "model_talker_compile_mode": getattr(model, "_talker_compile_mode", None),
+        "model_talker_compile_dynamic": getattr(model, "_talker_compile_dynamic", None),
     }
 
     component_paths = {
@@ -111,6 +117,9 @@ class RealtimeServerDependencies:
     samples_per_step: int = 1920
     trace_timing: bool = False
     runtime_session_sync_mode: str = "chunk"
+    compile_talker: bool = False
+    compile_mode: str = "reduce-overhead"
+    compile_dynamic: bool = True
 
 
 @dataclass(frozen=True)
@@ -169,6 +178,9 @@ class RealtimeServerConfig:
     trace_timing: bool = False
     trace_attention_backend: bool = False
     runtime_session_sync_mode: str = "chunk"
+    compile_talker: bool = False
+    compile_mode: str = "reduce-overhead"
+    compile_dynamic: bool = True
 
 
 class BundleSpeechService:
@@ -364,6 +376,9 @@ def build_dependencies(
         torch_dtype=config.torch_dtype,
         attn_implementation=config.attn_implementation,
         local_files_only=config.local_files_only,
+        compile_talker=config.compile_talker,
+        compile_mode=config.compile_mode,
+        compile_dynamic=config.compile_dynamic,
     )
     if config.trace_attention_backend:
         _log_attention_backend_snapshot(config, loaded_bundle)
@@ -381,6 +396,9 @@ def build_dependencies(
         samples_per_step=config.samples_per_step,
         trace_timing=config.trace_timing,
         runtime_session_sync_mode=config.runtime_session_sync_mode,
+        compile_talker=config.compile_talker,
+        compile_mode=config.compile_mode,
+        compile_dynamic=config.compile_dynamic,
     )
 
 
@@ -592,6 +610,18 @@ def build_parser() -> argparse.ArgumentParser:
         default="chunk",
         help="How often to bind RuntimeSession generation state during streaming.",
     )
+    parser.add_argument("--compile_talker", action="store_true", help="Experimental: wrap qwen3tts.model.talker with torch.compile.")
+    parser.add_argument(
+        "--compile_mode",
+        default="reduce-overhead",
+        choices=("default", "reduce-overhead", "max-autotune"),
+        help="torch.compile mode used when --compile_talker is enabled.",
+    )
+    parser.add_argument(
+        "--compile_dynamic",
+        action="store_true",
+        help="Enable dynamic shape support when compiling the talker module.",
+    )
     return parser
 
 
@@ -621,6 +651,9 @@ def main() -> None:
         trace_timing=args.trace_timing,
         trace_attention_backend=args.trace_attention_backend,
         runtime_session_sync_mode=args.runtime_session_sync_mode,
+        compile_talker=args.compile_talker,
+        compile_mode=args.compile_mode,
+        compile_dynamic=args.compile_dynamic,
     )
     logging.basicConfig(level=logging.INFO if config.trace_timing else logging.WARNING)
     app = create_app(config=config)

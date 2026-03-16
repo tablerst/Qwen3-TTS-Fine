@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
+import torch
+
 from lora_finetuning.common import (
     apply_config_patch,
     apply_speaker_patch,
@@ -127,6 +129,9 @@ class BundleLoader:
         torch_dtype: str = "bfloat16",
         attn_implementation: str = "sdpa",
         local_files_only: bool = False,
+        compile_talker: bool = False,
+        compile_mode: str = "reduce-overhead",
+        compile_dynamic: bool = True,
     ) -> LoadedBundle:
         artifacts = resolve_bundle_artifacts(
             bundle_dir,
@@ -150,6 +155,19 @@ class BundleLoader:
         apply_config_patch(qwen3tts.model, config_patch)
         applied_speaker_id = apply_speaker_patch(qwen3tts.model, artifacts.speaker_patch_file)
         qwen3tts.model.eval()
+        if compile_talker:
+            qwen3tts.model.talker = torch.compile(
+                qwen3tts.model.talker,
+                mode=compile_mode,
+                dynamic=compile_dynamic,
+            )
+            setattr(qwen3tts.model, "_talker_compile_enabled", True)
+            setattr(qwen3tts.model, "_talker_compile_mode", compile_mode)
+            setattr(qwen3tts.model, "_talker_compile_dynamic", compile_dynamic)
+        else:
+            setattr(qwen3tts.model, "_talker_compile_enabled", False)
+            setattr(qwen3tts.model, "_talker_compile_mode", None)
+            setattr(qwen3tts.model, "_talker_compile_dynamic", None)
 
         resolved_speaker_name = infer_speaker_name(config_patch, artifacts.speaker_name)
         tts_model_type = str(getattr(qwen3tts.model, "tts_model_type", ""))

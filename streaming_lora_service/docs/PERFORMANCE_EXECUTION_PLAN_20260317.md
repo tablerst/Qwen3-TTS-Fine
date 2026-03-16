@@ -142,3 +142,38 @@
 - 改公开协议为二进制帧；
 - 重新评估 `flash_attention_2` / `FA3` / `FA4`；
 - 在未稳定 shape 前强推 `torch.compile` 默认开启。
+
+## Experimental compile status
+
+截至 2026-03-17，服务已支持通过启动参数开启实验性 `torch.compile`：
+
+- `--compile_talker`
+- `--compile_mode <default|reduce-overhead|max-autotune>`
+- `--compile_dynamic`
+
+当前策略仍然是：
+
+- 默认关闭；
+- 仅编译 `qwen3tts.model.talker`；
+- 配合 benchmark 与 `trace_timing` 做 A/B，而不是直接切成默认生产配置。
+
+### 2026-03-17 same-text WS compile experiment result
+
+已在 `benchmark/candidate8_v2_ws_compile_v1/` 对 `candidate8_v2` 主线 bundle 做过一轮实验：
+
+- 开关：`--compile_talker --compile_mode reduce-overhead --compile_dynamic`
+- 传输：WebSocket
+- 文本：same-text `zh_formal`
+
+当前结果：
+
+- measured runs 成功数为 `0`
+- 首轮曾出现极大的 compile/prefill stall（`init_total_ms` 约 `167s`）
+- 先后命中了：
+  - CUDAGraph 输出复用覆盖错误
+  - `torch._dynamo.exc.UncapturedHigherOrderOpError`（Transformers generation 内部 `torch.cond` aliasing）
+
+当前判断：
+
+- **在现有 runtime / Transformers / Qwen3-TTS 这条生成路径上，compile 不是下一步主推方向**；
+- 若未来要重试，应优先等待上游 runtime/graph 兼容性变化，或进一步隔离更小的可编译子路径，而不是直接编译整个 `talker` 主调用路径。

@@ -228,6 +228,7 @@ V1 暂不追求：
 - 默认模式现在更偏向“同一请求内稳定跑完”；
 - 如果你需要保留旧的逐 step 调试 / 恢复行为，可显式传 `runtime_session_sync_mode="step"`，或在服务启动时加 `--runtime_session_sync_mode step`；
 - 若只希望在结束时同步 session，可使用 `final`。
+- 如果要开始试 `torch.compile`，当前服务已提供实验开关 `--compile_talker`，默认仍关闭；建议仅在已经拿到稳定 benchmark 基线后再做 A/B。
 
 对应执行方案文档见：
 
@@ -279,6 +280,18 @@ python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8
 - `step`：每个 generation step 都同步（兼容旧行为，调试友好，性能最保守）
 - `chunk`：仅在产出音频 chunk 时同步，外加初始化/结束强制同步（当前默认）
 - `final`：只在初始化和结束时同步
+
+如果要实验 `torch.compile`：
+
+```text
+--compile_talker --compile_mode reduce-overhead --compile_dynamic
+```
+
+说明：
+
+- 当前只对 `qwen3tts.model.talker` 提供 opt-in compile；
+- 这是实验路径，不会默认开启；
+- 建议始终结合 benchmark 与 `trace_timing` 一起看，不要只看首轮 warmup 结果。
 
 说明：
 

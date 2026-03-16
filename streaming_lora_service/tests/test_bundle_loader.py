@@ -138,6 +138,28 @@ class BundleLoaderTests(unittest.TestCase):
         base_model, _ = FakeFactory.call_args
         self.assertEqual(base_model, str(model_dir))
 
+    def test_load_bundle_can_optionally_compile_talker(self) -> None:
+        bundle_dir = self.build_bundle()
+        loader = BundleLoader(model_factory=FakeFactory)
+
+        with patch("streaming_lora_service.app.bundle_loader.load_lora_adapter"), patch(
+            "streaming_lora_service.app.bundle_loader.torch.compile",
+            side_effect=lambda module, **kwargs: SimpleNamespace(compiled_module=module, compile_kwargs=kwargs),
+        ) as compile_mock:
+            loaded = loader.load(
+                bundle_dir,
+                device_map="cpu",
+                torch_dtype="float32",
+                compile_talker=True,
+                compile_mode="reduce-overhead",
+                compile_dynamic=True,
+            )
+
+        compile_mock.assert_called_once()
+        self.assertTrue(loaded.qwen3tts.model._talker_compile_enabled)
+        self.assertEqual(loaded.qwen3tts.model._talker_compile_mode, "reduce-overhead")
+        self.assertTrue(loaded.qwen3tts.model._talker_compile_dynamic)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,299 @@
+{
+  "config": {
+    "http_base_url": "http://127.0.0.1:45460",
+    "endpoint": "/v1/tts",
+    "model": "qwen3-tts-flash-realtime",
+    "voice": "yachiyo_candidate8_v2",
+    "voice_resolution": {
+      "voice": "yachiyo_candidate8_v2",
+      "source": "requested"
+    },
+    "sample_rate": 24000,
+    "iterations": 3,
+    "warmup": 1,
+    "timeout": 180.0,
+    "optimize_instructions": false
+  },
+  "preflight": {
+    "health": {
+      "status": "ok",
+      "model": "qwen3-tts-flash-realtime",
+      "default_voice": "yachiyo_candidate8_v2"
+    },
+    "voices": {
+      "default_voice": "yachiyo_candidate8_v2",
+      "data": [
+        {
+          "voice": "yachiyo_candidate8_v2",
+          "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+          "language_type": "Auto",
+          "description": "Candidate8 multilingual warmstart v2 service mainline candidate",
+          "supported_models": [
+            "qwen3-tts-flash-realtime"
+          ]
+        },
+        {
+          "voice": "yachiyo_formal",
+          "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+          "language_type": "Auto",
+          "description": "Backward-compatible alias mapped to the current candidate8 v2 service bundle",
+          "supported_models": [
+            "qwen3-tts-flash-realtime"
+          ]
+        }
+      ]
+    },
+    "voice_selection": {
+      "voice": "yachiyo_candidate8_v2",
+      "source": "requested"
+    }
+  },
+  "summary": {
+    "case_count": 1,
+    "success_count": 3,
+    "failure_count": 0,
+    "overall": {
+      "run_count": 3,
+      "response_headers_ms": {
+        "count": 3,
+        "min": 1.7683,
+        "max": 2.1582,
+        "mean": 2.01,
+        "median": 2.1036,
+        "stdev": 0.2111,
+        "p50": 2.1036,
+        "p95": 2.1527
+      },
+      "ttft_ms": {
+        "count": 3,
+        "min": 286.9842,
+        "max": 299.3236,
+        "mean": 295.2068,
+        "median": 299.3127,
+        "stdev": 7.121,
+        "p50": 299.3127,
+        "p95": 299.3225
+      },
+      "final_chunk_ms": {
+        "count": 3,
+        "min": 23555.5297,
+        "max": 27203.9023,
+        "mean": 25315.7416,
+        "median": 25187.7927,
+        "stdev": 1827.5486,
+        "p50": 25187.7927,
+        "p95": 27002.2913
+      },
+      "total_elapsed_ms": {
+        "count": 3,
+        "min": 23555.5297,
+        "max": 27203.9023,
+        "mean": 25315.7416,
+        "median": 25187.7927,
+        "stdev": 1827.5486,
+        "p50": 25187.7927,
+        "p95": 27002.2913
+      },
+      "audio_duration_s": {
+        "count": 3,
+        "min": 8.88,
+        "max": 9.84,
+        "mean": 9.3333,
+        "median": 9.28,
+        "stdev": 0.4822,
+        "p50": 9.28,
+        "p95": 9.784
+      },
+      "rtf": {
+        "count": 3,
+        "min": 2.6526,
+        "max": 2.7646,
+        "mean": 2.7105,
+        "median": 2.7142,
+        "stdev": 0.0561,
+        "p50": 2.7142,
+        "p95": 2.7596
+      },
+      "audio_chunks": {
+        "count": 3,
+        "min": 29.0,
+        "max": 32.0,
+        "mean": 30.3333,
+        "median": 30.0,
+        "stdev": 1.5275,
+        "p50": 30.0,
+        "p95": 31.8
+      },
+      "total_audio_bytes": {
+        "count": 3,
+        "min": 426240.0,
+        "max": 472320.0,
+        "mean": 448000.0,
+        "median": 445440.0,
+        "stdev": 23146.4209,
+        "p50": 445440.0,
+        "p95": 469632.0
+      }
+    }
+  },
+  "cases": {
+    "custom": {
+      "case": {
+        "id": "custom",
+        "text": "你好，欢迎使用 Qwen3-TTS WebSocket benchmark。这是一段用于测量首包时延与实时因子的中文测试文本。",
+        "language_type": "Chinese",
+        "instructions": "正式，平静，清晰。"
+      },
+      "summary": {
+        "run_count": 3,
+        "response_headers_ms": {
+          "count": 3,
+          "min": 1.7683,
+          "max": 2.1582,
+          "mean": 2.01,
+          "median": 2.1036,
+          "stdev": 0.2111,
+          "p50": 2.1036,
+          "p95": 2.1527
+        },
+        "ttft_ms": {
+          "count": 3,
+          "min": 286.9842,
+          "max": 299.3236,
+          "mean": 295.2068,
+          "median": 299.3127,
+          "stdev": 7.121,
+          "p50": 299.3127,
+          "p95": 299.3225
+        },
+        "final_chunk_ms": {
+          "count": 3,
+          "min": 23555.5297,
+          "max": 27203.9023,
+          "mean": 25315.7416,
+          "median": 25187.7927,
+          "stdev": 1827.5486,
+          "p50": 25187.7927,
+          "p95": 27002.2913
+        },
+        "total_elapsed_ms": {
+          "count": 3,
+          "min": 23555.5297,
+          "max": 27203.9023,
+          "mean": 25315.7416,
+          "median": 25187.7927,
+          "stdev": 1827.5486,
+          "p50": 25187.7927,
+          "p95": 27002.2913
+        },
+        "audio_duration_s": {
+          "count": 3,
+          "min": 8.88,
+          "max": 9.84,
+          "mean": 9.3333,
+          "median": 9.28,
+          "stdev": 0.4822,
+          "p50": 9.28,
+          "p95": 9.784
+        },
+        "rtf": {
+          "count": 3,
+          "min": 2.6526,
+          "max": 2.7646,
+          "mean": 2.7105,
+          "median": 2.7142,
+          "stdev": 0.0561,
+          "p50": 2.7142,
+          "p95": 2.7596
+        },
+        "audio_chunks": {
+          "count": 3,
+          "min": 29.0,
+          "max": 32.0,
+          "mean": 30.3333,
+          "median": 30.0,
+          "stdev": 1.5275,
+          "p50": 30.0,
+          "p95": 31.8
+        },
+        "total_audio_bytes": {
+          "count": 3,
+          "min": 426240.0,
+          "max": 472320.0,
+          "mean": 448000.0,
+          "median": 445440.0,
+          "stdev": 23146.4209,
+          "p50": 445440.0,
+          "p95": 469632.0
+        }
+      },
+      "runs": [
+        {
+          "case_id": "custom",
+          "iteration": 1,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "endpoint": "/v1/tts",
+          "sample_rate": 24000,
+          "response_headers_ms": 1.7683,
+          "ttft_ms": 286.9842,
+          "final_chunk_ms": 27203.9023,
+          "total_elapsed_ms": 27203.9023,
+          "total_audio_bytes": 472320,
+          "audio_duration_s": 9.84,
+          "rtf": 2.764624,
+          "audio_chunks": 32,
+          "request_id": "req_e8baec29c147423c81051e3faf39e121",
+          "final_finish_reason": "stop",
+          "audio_id": "audio_1adb25f5f6e44fa3a3fb5adfd9b3cef3",
+          "audio_url": "http://127.0.0.1:45460/v1/audio/audio_1adb25f5f6e44fa3a3fb5adfd9b3cef3",
+          "usage_characters": 63
+        },
+        {
+          "case_id": "custom",
+          "iteration": 2,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "endpoint": "/v1/tts",
+          "sample_rate": 24000,
+          "response_headers_ms": 2.1036,
+          "ttft_ms": 299.3236,
+          "final_chunk_ms": 25187.7927,
+          "total_elapsed_ms": 25187.7927,
+          "total_audio_bytes": 445440,
+          "audio_duration_s": 9.28,
+          "rtf": 2.714202,
+          "audio_chunks": 30,
+          "request_id": "req_8c11e27110f54ce899ece1f92421ca44",
+          "final_finish_reason": "stop",
+          "audio_id": "audio_996e29ff255b41928d50c0c866f224fe",
+          "audio_url": "http://127.0.0.1:45460/v1/audio/audio_996e29ff255b41928d50c0c866f224fe",
+          "usage_characters": 63
+        },
+        {
+          "case_id": "custom",
+          "iteration": 3,
+          "model": "qwen3-tts-flash-realtime",
+          "voice": "yachiyo_candidate8_v2",
+          "endpoint": "/v1/tts",
+          "sample_rate": 24000,
+          "response_headers_ms": 2.1582,
+          "ttft_ms": 299.3127,
+          "final_chunk_ms": 23555.5297,
+          "total_elapsed_ms": 23555.5297,
+          "total_audio_bytes": 426240,
+          "audio_duration_s": 8.88,
+          "rtf": 2.65265,
+          "audio_chunks": 29,
+          "request_id": "req_7c942133119d41ec85c99d15bbf2be03",
+          "final_finish_reason": "stop",
+          "audio_id": "audio_d0f5a03856a34225894d9712e1d8c0a3",
+          "audio_url": "http://127.0.0.1:45460/v1/audio/audio_d0f5a03856a34225894d9712e1d8c0a3",
+          "usage_characters": 63
+        }
+      ],
+      "failure_count": 0
+    }
+  },
+  "failures": []
+}
