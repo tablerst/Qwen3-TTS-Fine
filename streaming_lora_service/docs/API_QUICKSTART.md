@@ -6,12 +6,24 @@
 
 建议联调时使用下面这组服务参数：
 
+- `backend`: `faster`（当前默认主线）
 - `bundle_dir`: `outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best`
 - `voice_registry_file`: `streaming_lora_service/configs/voice_registry.candidate8_v2.json`
 - `public_model_alias`: `qwen3-tts-flash-realtime`
 - `default_voice_alias`: `yachiyo_candidate8_v2`
 - `host`: `0.0.0.0`
 - `port`: `9010`
+
+推荐启动方式：
+
+```text
+python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_candidate8_v2 --voice_registry_file streaming_lora_service/configs/voice_registry.candidate8_v2.json --host 0.0.0.0 --port 9010 --local_files_only
+```
+
+说明：
+
+- 当前不显式传 `--backend` 时，默认即为 `faster`；
+- 如需回退旧的 native 路径做问题定位，可额外传 `--backend native`。
 
 本机访问地址：
 

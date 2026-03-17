@@ -74,6 +74,7 @@ def main() -> None:
     args = build_parser().parse_args()
     config = RealtimeServerConfig(
         bundle_dir=Path(args.bundle_dir),
+        backend="native",
         public_model_alias=args.public_model_alias,
         default_voice_alias=args.default_voice_alias,
         voice_registry_file=Path(args.voice_registry_file),

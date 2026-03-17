@@ -174,7 +174,7 @@ class TTSRequest(BaseModel):
 @dataclass(frozen=True)
 class RealtimeServerConfig:
     bundle_dir: Path
-    backend: str = "native"
+    backend: str = "faster"
     public_model_alias: str = "qwen3-tts-flash-realtime"
     default_voice_alias: str = "default"
     voice_registry_file: Path | None = None
@@ -640,7 +640,7 @@ def create_app(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Serve a Qwen-compatible realtime TTS MVP backed by a default LoRA bundle")
     parser.add_argument("--bundle_dir", required=True)
-    parser.add_argument("--backend", default="native", choices=("native", "faster"))
+    parser.add_argument("--backend", default="faster", choices=("native", "faster"))
     parser.add_argument("--public_model_alias", default="qwen3-tts-flash-realtime")
     parser.add_argument("--default_voice_alias", default="default")
     parser.add_argument("--voice_registry_file", default=None)

@@ -263,21 +263,27 @@ V1 暂不追求：
 python -m streaming_lora_service.app.server --bundle_dir <path_to_bundle>
 ```
 
+当前默认主线 backend 已切到 `faster`，也就是说：
+
+- 不显式传 `--backend` 时，会默认走 `faster-qwen3-tts`；
+- 服务启动仍然只需要 `bundle_dir`，内部会自动导出或复用 merged model；
+- 如果你需要回退旧的 native true-streaming 内核做诊断或逐步对照，再显式传 `--backend native`。
+
 常见参数示例：
 
 ```text
 python -m streaming_lora_service.app.server --bundle_dir outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_candidate8_v2 --voice_registry_file streaming_lora_service/configs/voice_registry.candidate8_v2.json --host 0.0.0.0 --port 9010 --local_files_only
 ```
 
-如果你想继续把 `streaming_lora_service` 作为唯一对外服务层，但把 `faster-qwen3-tts` 接成 backend，当前可直接这样启动：
+如果你想把 native 路径作为回退或诊断模式显式启用，可这样启动：
 
 ```text
-python -m streaming_lora_service.app.server --backend faster --bundle_dir outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_candidate8_v2 --voice_registry_file streaming_lora_service/configs/voice_registry.candidate8_v2.json --host 0.0.0.0 --port 9010 --local_files_only
+python -m streaming_lora_service.app.server --backend native --bundle_dir outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best --public_model_alias qwen3-tts-flash-realtime --default_voice_alias yachiyo_candidate8_v2 --voice_registry_file streaming_lora_service/configs/voice_registry.candidate8_v2.json --host 0.0.0.0 --port 9010 --local_files_only
 ```
 
 说明：
 
-- `backend=faster` 仍然以 `bundle_dir` 为启动输入；服务启动时会自动执行或复用 `bundle -> merged model -> FasterQwen3TTS` 这条加载链路；
+- 默认 `backend=faster` 仍然以 `bundle_dir` 为启动输入；服务启动时会自动执行或复用 `bundle -> merged model -> FasterQwen3TTS` 这条加载链路；
 - 如需控制 merged 导出缓存目录，可额外传 `--faster_merged_cache_dir <path>`；
 - 如需控制 faster 静态 cache 长度，可额外传 `--faster_max_seq_len 2048`；
 - 当前第一版重点保证 **WebSocket `/api-ws/v1/realtime` 协议兼容**；内部状态机不追求与 native streaming 路径完全等价。
@@ -306,7 +312,7 @@ python -m streaming_lora_service.app.server --backend faster --bundle_dir output
 - 这是实验路径，不会默认开启；
 - 建议始终结合 benchmark 与 `trace_timing` 一起看，不要只看首轮 warmup 结果。
 
-补充：在 `backend=faster` 模式下，`--compile_talker`、`--trace_attention_backend` 与 `--runtime_session_sync_mode` 不再驱动 native 内部状态机；服务会保留协议行为，但每次 commit 会从头生成，不做 KV / session state 恢复。
+补充：在默认 `backend=faster` 模式下，`--compile_talker`、`--trace_attention_backend` 与 `--runtime_session_sync_mode` 不再驱动 native 内部状态机；服务会保留协议行为，但每次 commit 会从头生成，不做 KV / session state 恢复。若你需要这些 native 行为，请显式传 `--backend native`。
 
 说明：
 
