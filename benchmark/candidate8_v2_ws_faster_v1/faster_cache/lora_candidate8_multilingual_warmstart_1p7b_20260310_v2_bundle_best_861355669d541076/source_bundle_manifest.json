@@ -1,0 +1,9 @@
+{
+  "format_version": 1,
+  "base_model_path": "E:/JetBrains/Pycharm/Qwen3-TTS-Fine/models/Qwen3-TTS-12Hz-1.7B-Base",
+  "adapter_dir": "adapter",
+  "speaker_embedding_file": "speaker_embedding.safetensors",
+  "config_patch_file": "config_patch.json",
+  "speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+  "speaker_id": 3000
+}

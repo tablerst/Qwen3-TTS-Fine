@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import logging
 from pathlib import Path
@@ -15,13 +15,18 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .audio_utils import float_audio_to_pcm16le_bytes, pcm16le_bytes_to_wav_bytes
+from .backend import (
+    BackendLoadResult,
+    SpeechBackend,
+    NativeQwenSpeechBackend,
+    load_faster_backend,
+    load_native_backend,
+)
+from .audio_utils import pcm16le_bytes_to_wav_bytes
 from .bundle_loader import BundleLoader
 from .models import LoadedBundle, SessionOptions, SynthesizedAudio
 from .qwen_compat_ws import QwenRealtimeProtocolAdapter
 from .runtime_session import RuntimeSession
-from .streaming_generator import StreamingCustomVoiceGenerator
-from .step_generator import generate_custom_voice_step_aware
 from .step_streamer import AudioStepStreamer, AudioStepStreamerConfig
 from .voice_registry import VoiceRegistry
 
@@ -105,10 +110,11 @@ def _log_attention_backend_snapshot(config: "RealtimeServerConfig", loaded_bundl
 
 @dataclass
 class RealtimeServerDependencies:
-    loaded_bundle: LoadedBundle
     voice_registry: VoiceRegistry
     public_model_alias: str
     default_voice_alias: str
+    loaded_bundle: LoadedBundle | None = None
+    backend: SpeechBackend | None = None
     audio_chunk_duration_ms: int = 320
     chunk_steps: int = 4
     left_context_steps: int = 25
@@ -120,6 +126,16 @@ class RealtimeServerDependencies:
     compile_talker: bool = False
     compile_mode: str = "reduce-overhead"
     compile_dynamic: bool = True
+    backend_kind: str = "native"
+    backend_metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.backend is None:
+            if self.loaded_bundle is None:
+                raise ValueError("RealtimeServerDependencies requires either backend or loaded_bundle")
+            self.backend = NativeQwenSpeechBackend(self.loaded_bundle)
+        if not self.backend_kind:
+            self.backend_kind = getattr(self.backend, "kind", "native")
 
 
 @dataclass(frozen=True)
@@ -158,6 +174,7 @@ class TTSRequest(BaseModel):
 @dataclass(frozen=True)
 class RealtimeServerConfig:
     bundle_dir: Path
+    backend: str = "native"
     public_model_alias: str = "qwen3-tts-flash-realtime"
     default_voice_alias: str = "default"
     voice_registry_file: Path | None = None
@@ -181,6 +198,8 @@ class RealtimeServerConfig:
     compile_talker: bool = False
     compile_mode: str = "reduce-overhead"
     compile_dynamic: bool = True
+    faster_merged_cache_dir: Path | None = None
+    faster_max_seq_len: int = 2048
 
 
 class BundleSpeechService:
@@ -204,10 +223,15 @@ class BundleSpeechService:
     def default_voice_alias(self) -> str:
         return self.deps.default_voice_alias
 
+    @property
+    def sample_rate(self) -> int:
+        return int(getattr(self.deps.backend, "sample_rate", 24000))
+
     def build_initial_session_options(self) -> SessionOptions:
         return SessionOptions(
             model=self.public_model_alias,
             voice=self.default_voice_alias,
+            sample_rate=self.sample_rate,
         )
 
     def create_protocol_adapter(self) -> QwenRealtimeProtocolAdapter:
@@ -233,8 +257,7 @@ class BundleSpeechService:
 
     def synthesize(self, session, text: str) -> SynthesizedAudio:
         profile = self.deps.voice_registry.resolve(session.options.voice, model=session.options.model)
-        return generate_custom_voice_step_aware(
-            self.deps.loaded_bundle.qwen3tts,
+        return self.deps.backend.synthesize(
             text=text,
             language=session.options.language_type,
             speaker=profile.speaker_name,
@@ -270,8 +293,7 @@ class BundleSpeechService:
     def stream_synthesize(self, session, text: str):
         profile = self.deps.voice_registry.resolve(session.options.voice, model=session.options.model)
         stream_started_at = time.perf_counter()
-        generator = StreamingCustomVoiceGenerator(
-            self.deps.loaded_bundle.qwen3tts,
+        generator = self.deps.backend.stream_synthesize(
             text=text,
             language=session.options.language_type,
             speaker=profile.speaker_name,
@@ -286,7 +308,7 @@ class BundleSpeechService:
         first_chunk_at: float | None = None
         total_audio_bytes = 0
         try:
-            for chunk in generator.iter_audio_chunks():
+            for chunk in generator:
                 if first_chunk_at is None and chunk:
                     first_chunk_at = time.perf_counter()
                 total_audio_bytes += len(chunk)
@@ -333,18 +355,24 @@ class BundleSpeechService:
         return self.step_streamer.iter_audio_chunks(synthesized)
 
 
-def build_voice_registry(config: RealtimeServerConfig, loaded_bundle: LoadedBundle) -> VoiceRegistry:
+def build_voice_registry(config: RealtimeServerConfig, loaded_bundle: Any) -> VoiceRegistry:
+    source_speaker_name = getattr(loaded_bundle, "speaker_name", None)
+    supported_speakers = getattr(loaded_bundle, "supported_speakers", None)
+    if supported_speakers is None:
+        qwen3tts = getattr(loaded_bundle, "qwen3tts", None)
+        model = getattr(qwen3tts, "model", None)
+        supported_speakers = getattr(model, "supported_speakers", None)
+
     if config.voice_registry_file is not None:
         registry = VoiceRegistry.from_file(config.voice_registry_file)
     else:
         registry = VoiceRegistry.single_voice(
         voice_alias=config.default_voice_alias,
-        speaker_name=loaded_bundle.speaker_name,
+        speaker_name=source_speaker_name,
         model_alias=config.public_model_alias,
         description="Default voice derived from the loaded LoRA bundle",
         )
 
-    supported_speakers = getattr(loaded_bundle.qwen3tts.model, "supported_speakers", None)
     if supported_speakers is not None:
         supported = {str(item) for item in supported_speakers}
         invalid_profiles = [
@@ -369,22 +397,47 @@ def build_dependencies(
     *,
     bundle_loader: BundleLoader | None = None,
 ) -> RealtimeServerDependencies:
-    loader = bundle_loader or BundleLoader()
-    loaded_bundle = loader.load(
-        config.bundle_dir,
-        device_map=config.device_map,
-        torch_dtype=config.torch_dtype,
-        attn_implementation=config.attn_implementation,
-        local_files_only=config.local_files_only,
-        compile_talker=config.compile_talker,
-        compile_mode=config.compile_mode,
-        compile_dynamic=config.compile_dynamic,
-    )
-    if config.trace_attention_backend:
-        _log_attention_backend_snapshot(config, loaded_bundle)
-    voice_registry = build_voice_registry(config, loaded_bundle)
+    load_result: BackendLoadResult
+    if config.backend == "native":
+        load_result = load_native_backend(
+            config.bundle_dir,
+            device_map=config.device_map,
+            torch_dtype=config.torch_dtype,
+            attn_implementation=config.attn_implementation,
+            local_files_only=config.local_files_only,
+            compile_talker=config.compile_talker,
+            compile_mode=config.compile_mode,
+            compile_dynamic=config.compile_dynamic,
+            bundle_loader=bundle_loader,
+        )
+        if config.trace_attention_backend and load_result.loaded_bundle is not None:
+            _log_attention_backend_snapshot(config, load_result.loaded_bundle)
+    elif config.backend == "faster":
+        if config.trace_attention_backend:
+            logger.warning("trace_attention_backend is not supported for backend=faster; ignoring request")
+        if config.compile_talker:
+            logger.warning("compile_talker is native-only and will be ignored for backend=faster")
+        if config.runtime_session_sync_mode != "chunk":
+            logger.warning(
+                "runtime_session_sync_mode=%s is not implemented for backend=faster; each commit will synthesize from scratch",
+                config.runtime_session_sync_mode,
+            )
+        load_result = load_faster_backend(
+            config.bundle_dir,
+            device=config.device_map,
+            torch_dtype=config.torch_dtype,
+            attn_implementation=config.attn_implementation,
+            local_files_only=config.local_files_only,
+            max_seq_len=config.faster_max_seq_len,
+            cache_root=config.faster_merged_cache_dir,
+        )
+    else:
+        raise ValueError(f"Unsupported backend: {config.backend}")
+
+    voice_registry = build_voice_registry(config, load_result)
     return RealtimeServerDependencies(
-        loaded_bundle=loaded_bundle,
+        loaded_bundle=load_result.loaded_bundle,
+        backend=load_result.backend,
         voice_registry=voice_registry,
         public_model_alias=config.public_model_alias,
         default_voice_alias=voice_registry.default_voice or config.default_voice_alias,
@@ -399,6 +452,8 @@ def build_dependencies(
         compile_talker=config.compile_talker,
         compile_mode=config.compile_mode,
         compile_dynamic=config.compile_dynamic,
+        backend_kind=load_result.backend.kind,
+        backend_metadata=load_result.metadata,
     )
 
 
@@ -505,7 +560,7 @@ def create_app(
                     language_type=payload.language_type,
                     instructions=payload.instructions,
                 )
-                stream_sample_rate = 24000
+                stream_sample_rate = int(getattr(service, "sample_rate", 24000))
             elif hasattr(service, "iter_stream_chunks"):
                 synthesized = service.synthesize_http(
                     text=payload.text,
@@ -585,6 +640,7 @@ def create_app(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Serve a Qwen-compatible realtime TTS MVP backed by a default LoRA bundle")
     parser.add_argument("--bundle_dir", required=True)
+    parser.add_argument("--backend", default="native", choices=("native", "faster"))
     parser.add_argument("--public_model_alias", default="qwen3-tts-flash-realtime")
     parser.add_argument("--default_voice_alias", default="default")
     parser.add_argument("--voice_registry_file", default=None)
@@ -622,6 +678,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable dynamic shape support when compiling the talker module.",
     )
+    parser.add_argument(
+        "--faster_merged_cache_dir",
+        default=None,
+        help="Optional cache root for bundle->merged model exports used by backend=faster.",
+    )
+    parser.add_argument(
+        "--faster_max_seq_len",
+        type=int,
+        default=2048,
+        help="Static cache sequence length passed to faster-qwen3-tts when backend=faster.",
+    )
     return parser
 
 
@@ -631,6 +698,7 @@ def main() -> None:
     args = build_parser().parse_args()
     config = RealtimeServerConfig(
         bundle_dir=Path(args.bundle_dir),
+        backend=args.backend,
         public_model_alias=args.public_model_alias,
         default_voice_alias=args.default_voice_alias,
         voice_registry_file=Path(args.voice_registry_file) if args.voice_registry_file else None,
@@ -654,6 +722,8 @@ def main() -> None:
         compile_talker=args.compile_talker,
         compile_mode=args.compile_mode,
         compile_dynamic=args.compile_dynamic,
+        faster_merged_cache_dir=Path(args.faster_merged_cache_dir) if args.faster_merged_cache_dir else None,
+        faster_max_seq_len=args.faster_max_seq_len,
     )
     logging.basicConfig(level=logging.INFO if config.trace_timing else logging.WARNING)
     app = create_app(config=config)

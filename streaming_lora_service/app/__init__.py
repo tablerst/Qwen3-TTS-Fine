@@ -1,4 +1,13 @@
 from .audio_utils import chunk_audio_bytes, float_audio_to_pcm16le_bytes
+from .backend import (
+    BackendCapabilities,
+    BackendLoadResult,
+    FasterQwenSpeechBackend,
+    NativeQwenSpeechBackend,
+    SpeechBackend,
+    load_faster_backend,
+    load_native_backend,
+)
 from .bundle_loader import BundleLoader, BundleLoaderError, resolve_bundle_artifacts
 from .incremental_decoder import IncrementalAudioDecoder, IncrementalDecoderConfig
 from .models import BundleArtifacts, DecodePlan, LoadedBundle, PublicVoiceProfile, SessionOptions, SynthesizedAudio
@@ -21,14 +30,19 @@ from .voice_registry import VoiceRegistry, VoiceRegistryError
 
 __all__ = [
     "BundleSpeechService",
-        "InMemoryAudioStore",
+    "InMemoryAudioStore",
+    "BackendCapabilities",
+    "BackendLoadResult",
     "BundleArtifacts",
     "BundleLoader",
     "BundleLoaderError",
+    "FasterQwenSpeechBackend",
     "chunk_audio_bytes",
     "create_app",
     "DecodePlan",
     "build_dependencies",
+    "load_faster_backend",
+    "load_native_backend",
     "build_protocol_adapter",
     "build_voice_registry",
     "float_audio_to_pcm16le_bytes",
@@ -38,6 +52,7 @@ __all__ = [
     "AudioStepStreamer",
     "AudioStepStreamerConfig",
     "LoadedBundle",
+    "NativeQwenSpeechBackend",
     "PublicVoiceProfile",
     "QwenRealtimeProtocolAdapter",
     "RealtimeServerConfig",
@@ -46,6 +61,7 @@ __all__ = [
     "RuntimeSession",
     "RuntimeSessionError",
     "SessionOptions",
+    "SpeechBackend",
     "SynthesizedAudio",
     "VoiceRegistry",
     "VoiceRegistryError",

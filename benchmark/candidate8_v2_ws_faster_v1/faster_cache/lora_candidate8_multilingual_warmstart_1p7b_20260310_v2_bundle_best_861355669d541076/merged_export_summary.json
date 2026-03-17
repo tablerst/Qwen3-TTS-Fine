@@ -1,0 +1,27 @@
+{
+  "source_bundle_dir": "/home/mizore/workspace/python/Qwen3-TTS-Fine/outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best",
+  "output_dir": "/home/mizore/workspace/python/Qwen3-TTS-Fine/benchmark/candidate8_v2_ws_faster_v1/faster_cache/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best_861355669d541076",
+  "base_model": "/home/mizore/workspace/python/Qwen3-TTS-Fine/models/Qwen3-TTS-12Hz-1.7B-Base",
+  "adapter_dir": "outputs/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best/adapter",
+  "resolved_speaker_name": "yachiyo_candidate8_multilingual_warmstart_v2",
+  "speaker_id": 3000,
+  "merged_layer_count": 196,
+  "stripped_wrapper_count": 196,
+  "tts_model_type": "custom_voice",
+  "device_map": "cuda:0",
+  "torch_dtype": "bfloat16",
+  "attn_implementation": "sdpa",
+  "local_files_only": true,
+  "elapsed_seconds": 19.3988,
+  "validated_contract": {
+    "model_dir": "/home/mizore/workspace/python/Qwen3-TTS-Fine/benchmark/candidate8_v2_ws_faster_v1/faster_cache/lora_candidate8_multilingual_warmstart_1p7b_20260310_v2_bundle_best_861355669d541076",
+    "tts_model_type": "custom_voice",
+    "speaker_names": [
+      "yachiyo_candidate8_multilingual_warmstart_v2"
+    ],
+    "speaker_count": 1,
+    "resolved_speaker": "yachiyo_candidate8_multilingual_warmstart_v2",
+    "has_weight_files": true,
+    "has_processor_files": true
+  }
+}
